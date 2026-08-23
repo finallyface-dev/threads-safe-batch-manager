@@ -66,6 +66,8 @@ On 2026-08-24, the current Traditional Chinese Threads DOM and selectors were ch
 
 The `main` branch is the development source. Formal versions use a Git tag matching the userscript `@version`, such as `v1.0.0`. Use a tag rather than raw `main` when you need an immutable version.
 
+`SHA256SUMS` contains the SHA-256 checksum for the released userscript file.
+
 ## License
 
 Released under the [MIT License](LICENSE).

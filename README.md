@@ -94,6 +94,7 @@ node tests/userscript.test.js
 - `tests/userscript.test.js`：不連線的 Node.js 測試。
 - `SECURITY.md`：安全問題回報方式。
 - `CONTRIBUTING.md`：貢獻與安全邊界。
+- `SHA256SUMS`：正式 userscript 檔案的 SHA-256 檢查值。
 
 ## 授權
 
