@@ -15,7 +15,7 @@ An open-source userscript for the Threads web app. It lets users preview a small
 - Read-only preview before any relationship change.
 - Typed confirmation and a final confirmation dialog.
 - Confirmation applies to the whole batch, not to every account. If Threads presents a clearly identified native confirmation dialog, the script continues that confirmed batch by clicking the required confirmation control.
-- Maximum of 25 accounts per batch.
+- Maximum of 50 accounts per batch. The panel shows an extra risk warning above 25.
 - Fixed delay of 8 to 30 seconds between actions.
 - Pause, explicitly skip the current item, or stop and clear session data.
 - Fail closed on CAPTCHA, rate limits, account changes, ambiguous controls, reloads, history navigation, and BFCache restores.
@@ -57,14 +57,14 @@ No build step or external package is required.
 
 ```bash
 node --check threads-safe-batch-manager.user.js
-node tests/userscript.test.js
+node --test tests/userscript.test.js
 ```
 
 The tests are offline. They do not sign in to Threads or modify account relationships.
 
 On 2026-08-24, the current Traditional Chinese Threads DOM and selectors were checked read-only in Edge. A complete live batch was not run against a user account. Other browser, userscript-manager, and interface-language combinations remain unverified.
 
-The `main` branch is the development source. Formal versions use a Git tag matching the userscript `@version`, such as `v1.0.0`. Use a tag rather than raw `main` when you need an immutable version.
+The `main` branch is the development source. Formal versions use a Git tag matching the userscript `@version`, such as `v1.1.0`. Use a tag rather than raw `main` when you need an immutable version.
 
 `SHA256SUMS` contains the SHA-256 checksum for the released userscript file.
 

@@ -10,7 +10,8 @@ const instrumented = source.replace(
   /\n\}\)\(\);\s*$/,
   `\n  globalThis.__userscriptTest = {\n` +
   `    CONFIG, MODE, LABELS, runtime, sanitizeState, readState, saveState,\n` +
-  `    normalizeText, profileTabBoundary, findUniqueProfileMore, relationRowForLink\n` +
+  `    normalizeText, profileTabBoundary, findUniqueProfileMore, findPrimaryProfileRelation,\n` +
+  `    relationRowForLink\n` +
   `  };\n})();`
 );
 
@@ -103,6 +104,8 @@ assert.equal(api.normalizeText('  ＦＯＬＬＯＷＩＮＧ\u200b  '), 'follow
 assert.ok(api.LABELS.followingAction.some((pattern) => pattern.test('已追蹤')));
 assert.ok(api.LABELS.followingAction.some((pattern) => pattern.test('Following @alice')));
 assert.ok(api.LABELS.unfollow.some((pattern) => pattern.test('取消追蹤 @alice')));
+assert.equal(api.CONFIG.maxBatchSize, 50);
+assert.equal(api.CONFIG.largeBatchWarningThreshold, 25);
 
 function fakeElement({ attrs = {}, top = 0, width = 100, height = 40, text = '', closestMap = {}, queries = {} } = {}) {
   const element = new FakeElement();
@@ -142,6 +145,24 @@ const ambiguousRegion = fakeElement({
   }
 });
 assert.equal(api.findUniqueProfileMore(ambiguousRegion), null, 'ambiguous profile menus must fail closed');
+
+const headerFollowing = fakeElement({ attrs: { 'aria-label': '追蹤中' }, top: 205 });
+let profileLinkQueries = 0;
+const relationRegion = fakeElement();
+relationRegion.querySelectorAll = (selector) => {
+  if (selector === 'a[href^="/@"]') {
+    profileLinkQueries += 1;
+    return [profileLink, mediaLink];
+  }
+  if (selector === 'button, [role="button"]') {
+    return [moreButton, headerFollowing];
+  }
+  return [];
+};
+const primaryRelation = api.findPrimaryProfileRelation(relationRegion);
+assert.equal(primaryRelation.element, headerFollowing);
+assert.equal(primaryRelation.state, 'following');
+assert.equal(profileLinkQueries, 1, 'profile tabs must be scanned only once per relation lookup');
 
 const relationLink = fakeElement({ attrs: { href: '/@alice' }, top: 10 });
 const arbitraryButton = fakeElement({ attrs: { 'aria-label': '其他' }, top: 10 });

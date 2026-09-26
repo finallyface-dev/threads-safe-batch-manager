@@ -2,6 +2,8 @@
 
 這是一個適用於 Threads 網頁版的開源 userscript。它讓使用者先掃描並預覽自己的名單，再逐筆移除粉絲或取消追蹤帳號。
 
+如果你覺得這個腳本有用，請到 [GitHub 專案頁面](https://github.com/finallyface-dev/threads-safe-batch-manager)給我一顆星星。
+
 [English](README.en.md)
 
 > [!WARNING]
@@ -17,7 +19,7 @@
 - 開始前顯示本批數量與部分帳號名稱。
 - 使用者必須輸入確認詞並通過最後確認。
 - 確認以「整批」為單位，不會在每個帳號前再次詢問。若 Threads 顯示明確的原生確認視窗，腳本會接著按下該批操作所需的確認按鈕。
-- 每批最多 25 筆，每筆間隔可設為 8 至 30 秒。
+- 每批最多 50 筆，每筆間隔可設為 8 至 30 秒。超過 25 筆時，面板會顯示額外風險提醒。
 - 支援暫停、略過目前項目，以及立即停止並清除暫存。
 - 遇到 CAPTCHA、操作限制、帳號切換或不明介面時停止。
 - 重新載入、上一頁／下一頁及 BFCache 還原後不會直接續跑。
@@ -74,7 +76,7 @@
 
 Threads 是動態網站。介面結構改版後，腳本可能安全停止並需要更新。
 
-GitHub `main` 是開發來源。正式版本會使用與 userscript `@version` 相同的 Git tag，例如 `v1.0.0`。Raw `main` 可能變動；需要固定版本時，請使用對應 tag。
+GitHub `main` 是開發來源。正式版本會使用與 userscript `@version` 相同的 Git tag，例如 `v1.1.0`。Raw `main` 可能變動；需要固定版本時，請使用對應 tag。
 
 ## 開發與測試
 
@@ -82,7 +84,7 @@ GitHub `main` 是開發來源。正式版本會使用與 userscript `@version` �
 
 ```bash
 node --check threads-safe-batch-manager.user.js
-node tests/userscript.test.js
+node --test tests/userscript.test.js
 ```
 
 測試涵蓋狀態資料驗證、錯誤 storage、事件 callback、關係文字、profile selector 與關係清單列驗證。測試不會登入 Threads，也不會變更任何帳號關係。

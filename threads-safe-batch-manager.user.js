@@ -3,7 +3,7 @@
 // @name:zh-TW   Threads 粉絲與追蹤批次管理（確認與停止版）
 // @name:en      Threads Follower and Following Batch Manager (Confirm & Stop)
 // @namespace    urn:userscript:threads-safe-batch-manager
-// @version      1.0.0
+// @version      1.1.0
 // @description  在 Threads 網頁版加入批次管理面板。使用者預覽並確認後，可逐筆移除粉絲或取消追蹤；腳本不使用未公開 API，也不繞過驗證或操作限制。
 // @description:zh-TW 在 Threads 網頁版加入批次管理面板。使用者預覽並確認後，可逐筆移除粉絲或取消追蹤；腳本不使用未公開 API，也不繞過驗證或操作限制。
 // @description:en Adds a user-confirmed batch panel to remove followers or unfollow accounts on Threads. It uses visible page controls only and does not bypass verification or action limits.
@@ -26,7 +26,7 @@
    * - 只使用 Threads 頁面上可見的 DOM 控制項。
    * - 不呼叫未公開 API，不讀取 Cookie 或權杖，不傳送名單。
    * - 不會在載入頁面後自動開始。使用者必須先預覽並輸入確認詞。
-   * - 每批最多 25 筆，兩次操作至少間隔 8 秒。
+   * - 每批最多 50 筆，超過 25 筆會顯示額外風險提醒；兩次操作至少間隔 8 秒。
    * - 遇到驗證、操作限制、登入失效或不明介面時立即暫停。
    *
    * Threads 會改版。找不到預期控制項時，本腳本採取「停止」而不是猜測。
@@ -38,7 +38,8 @@
     stateVersion: 1,
     defaultBatchSize: 10,
     minBatchSize: 1,
-    maxBatchSize: 25,
+    maxBatchSize: 50,
+    largeBatchWarningThreshold: 25,
     defaultDelayMs: 10000,
     minDelayMs: 8000,
     maxDelayMs: 30000,
@@ -484,13 +485,15 @@
     return ownHandle.toLowerCase() === currentHandle.toLowerCase() && Boolean(editButton);
   }
 
-  function underlyingOwnProfileMatches(expectedHandle) {
+  function underlyingOwnProfileMatches(
+    expectedHandle,
+    ownHandle = getOwnHandle(),
+    currentHandle = handleFromPath()
+  ) {
     if (!isValidHandle(expectedHandle)) {
       return false;
     }
 
-    const ownHandle = getOwnHandle();
-    const currentHandle = handleFromPath();
     if (!ownHandle || !currentHandle ||
       ownHandle.toLowerCase() !== expectedHandle.toLowerCase() ||
       currentHandle.toLowerCase() !== expectedHandle.toLowerCase()) {
@@ -851,7 +854,7 @@
               </select>
             </label>
             <label>本批上限
-              <input class="limit-input" type="number" min="1" max="25" step="1" value="10">
+              <input class="limit-input" type="number" min="1" max="50" step="1" value="10">
             </label>
             <label>每筆間隔（秒）
               <input class="delay-input" type="number" min="8" max="30" step="1" value="10">
@@ -1059,6 +1062,9 @@
   }
 
   function relationRowForLink(link, dialog, mode) {
+    const relationPatterns = mode === MODE.UNFOLLOW
+      ? LABELS.followingAction
+      : [...LABELS.followingAction, ...LABELS.followAction];
     let node = link;
 
     for (let depth = 0; depth < 8; depth += 1) {
@@ -1073,9 +1079,6 @@
           .filter(Boolean)
           .map((handle) => handle.toLowerCase())
       );
-      const relationPatterns = mode === MODE.UNFOLLOW
-        ? LABELS.followingAction
-        : [...LABELS.followingAction, ...LABELS.followAction];
       const rowActions = visibleElements(node, 'button, [role="button"]')
         .filter((button) => matchesLabels(button, relationPatterns));
       const rect = node.getBoundingClientRect();
@@ -1141,10 +1144,7 @@
 
         const currentOwnHandle = getOwnHandle();
         const currentProfileHandle = handleFromPath();
-        if (!currentOwnHandle || !currentProfileHandle ||
-          !underlyingOwnProfileMatches(ownHandle) ||
-          currentOwnHandle.toLowerCase() !== ownHandle.toLowerCase() ||
-          currentProfileHandle.toLowerCase() !== ownHandle.toLowerCase()) {
+        if (!underlyingOwnProfileMatches(ownHandle, currentOwnHandle, currentProfileHandle)) {
           throw new SafetyPauseError('掃描期間登入帳號或個人檔案已變更，已停止掃描。');
         }
 
@@ -1188,9 +1188,10 @@
 
       return { handles: [...handles].slice(0, limit), ownHandle };
     } finally {
+      const currentDialog = relationDialog();
       const restoreContainer = originalScrollContainer && originalScrollContainer.isConnected
         ? originalScrollContainer
-        : (relationDialog() ? findScrollContainer(relationDialog()) : null);
+        : (currentDialog ? findScrollContainer(currentDialog) : null);
       if (restoreContainer && originalScrollTop !== null) {
         restoreContainer.scrollTop = Math.min(originalScrollTop, restoreContainer.scrollHeight);
       }
@@ -1242,7 +1243,13 @@
       runtime.previewMode = mode;
       runtime.previewOwnHandle = previewResult.ownHandle;
       showPreview(handles);
-      updateStatus(`預覽完成。尚未執行任何 ${modeName(mode)} 動作。`, 'success');
+      const largeBatch = handles.length > CONFIG.largeBatchWarningThreshold;
+      updateStatus(
+        largeBatch
+          ? `預覽完成，共 ${handles.length} 筆。大型批次較容易觸發 Threads 限制，建議分批執行。`
+          : `預覽完成。尚未執行任何 ${modeName(mode)} 動作。`,
+        largeBatch ? 'warning' : 'success'
+      );
     } catch (error) {
       if (error instanceof StopRequestedError) {
         updateStatus('掃描已停止，沒有執行移除動作。', 'warning');
@@ -1262,8 +1269,12 @@
 
   function confirmBatch(mode, count) {
     const phrase = modeName(mode);
+    const largeBatchNotice = count > CONFIG.largeBatchWarningThreshold
+      ? `本批超過 ${CONFIG.largeBatchWarningThreshold} 筆，較容易觸發 Threads 限制。\n`
+      : '';
     const answer = window.prompt(
       `本批將逐筆執行「${phrase}」，共 ${count} 筆。\n` +
+      largeBatchNotice +
       '這些變更可能無法復原，也可能觸發 Threads 的操作限制。\n\n' +
       `若確定要繼續，請輸入：${phrase}`
     );
@@ -1498,8 +1509,10 @@
     return tabTops.length ? Math.min(...tabTops) : null;
   }
 
-  function findUniqueProfileMore(profileRegion) {
-    const tabBoundary = profileTabBoundary(profileRegion);
+  function findUniqueProfileMore(
+    profileRegion,
+    tabBoundary = profileTabBoundary(profileRegion)
+  ) {
     if (!Number.isFinite(tabBoundary)) {
       return null;
     }
@@ -1613,8 +1626,8 @@
   }
 
   function findPrimaryProfileRelation(profileRegion) {
-    const moreButton = findUniqueProfileMore(profileRegion);
     const tabBoundary = profileTabBoundary(profileRegion);
+    const moreButton = findUniqueProfileMore(profileRegion, tabBoundary);
     if (!moreButton || !Number.isFinite(tabBoundary)) {
       return null;
     }
