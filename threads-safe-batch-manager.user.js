@@ -3,7 +3,7 @@
 // @name:zh-TW   Threads 粉絲與追蹤批次管理（確認與停止版）
 // @name:en      Threads Follower and Following Batch Manager (Confirm & Stop)
 // @namespace    urn:userscript:threads-safe-batch-manager
-// @version      1.1.0
+// @version      1.1.1
 // @description  在 Threads 網頁版加入批次管理面板。使用者預覽並確認後，可逐筆移除粉絲或取消追蹤；腳本不使用未公開 API，也不繞過驗證或操作限制。
 // @description:zh-TW 在 Threads 網頁版加入批次管理面板。使用者預覽並確認後，可逐筆移除粉絲或取消追蹤；腳本不使用未公開 API，也不繞過驗證或操作限制。
 // @description:en Adds a user-confirmed batch panel to remove followers or unfollow accounts on Threads. It uses visible page controls only and does not bypass verification or action limits.
@@ -278,6 +278,9 @@
           return value;
         }
       } catch (error) {
+        if (error instanceof StopRequestedError) {
+          throw error;
+        }
         lastError = error;
       }
       await sleep(intervalMs);
@@ -1091,11 +1094,19 @@
     return null;
   }
 
-  function collectHandles(dialog, ownHandle, collection, mode) {
+  function collectHandles(dialog, ownHandle, collection, mode, limit = CONFIG.maxBatchSize) {
+    const normalizedOwnHandle = ownHandle.toLowerCase();
     const links = visibleElements(dialog, 'a[href^="/@"]');
     for (const link of links) {
+      if (collection.size >= limit) {
+        break;
+      }
       const handle = handleFromHref(link.getAttribute('href'));
-      if (!handle || handle.toLowerCase() === ownHandle.toLowerCase()) {
+      if (!handle) {
+        continue;
+      }
+      const normalizedHandle = handle.toLowerCase();
+      if (normalizedHandle === normalizedOwnHandle || collection.has(normalizedHandle)) {
         continue;
       }
 
@@ -1103,7 +1114,7 @@
         continue;
       }
 
-      collection.add(handle.toLowerCase());
+      collection.add(normalizedHandle);
     }
   }
 
@@ -1119,6 +1130,9 @@
     let previousCount = 0;
 
     const firstProfileLink = await waitFor(() => {
+      if (runtime.scanCancelled) {
+        throw new StopRequestedError();
+      }
       dialog = relationDialog();
       return dialog && dialog.querySelector('a[href^="/@"]');
     });
@@ -1153,7 +1167,7 @@
           throw new SafetyPauseError('掃描期間名單已關閉或切換，已停止掃描。');
         }
 
-        collectHandles(dialog, ownHandle, handles, mode);
+        collectHandles(dialog, ownHandle, handles, mode, limit);
         const previewHandles = [...handles].slice(0, limit);
         updateStatus(`正在掃描：已找到 ${previewHandles.length}/${limit} 筆。`);
 
@@ -1494,11 +1508,12 @@
     }
 
     const escapedHandle = currentHandle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const profileTabPattern = new RegExp(`^/@${escapedHandle}/(?:replies|media|reposts)/?$`, 'i');
     const tabTops = visibleElements(profileRegion, 'a[href^="/@"]')
       .filter((link) => {
         try {
           const url = new URL(link.getAttribute('href'), window.location.origin);
-          return new RegExp(`^/@${escapedHandle}/(?:replies|media|reposts)/?$`, 'i').test(url.pathname);
+          return profileTabPattern.test(url.pathname);
         } catch (_error) {
           return false;
         }

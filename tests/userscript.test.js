@@ -11,7 +11,7 @@ const instrumented = source.replace(
   `\n  globalThis.__userscriptTest = {\n` +
   `    CONFIG, MODE, LABELS, runtime, sanitizeState, readState, saveState,\n` +
   `    normalizeText, profileTabBoundary, findUniqueProfileMore, findPrimaryProfileRelation,\n` +
-  `    relationRowForLink\n` +
+  `    relationRowForLink, collectHandles\n` +
   `  };\n})();`
 );
 
@@ -188,6 +188,23 @@ row = makeRow(followButton);
 relationLink.parentElement = row;
 row.parentElement = dialog;
 assert.equal(api.relationRowForLink(relationLink, dialog, api.MODE.REMOVE_FOLLOWERS), row);
+
+const collectedHandles = new Set(['alice']);
+const duplicateLink = fakeElement({ attrs: { href: '/@Alice' } });
+duplicateLink.parentElement = row;
+const collectionDialog = fakeElement({ queries: { 'a[href^="/@"]': [duplicateLink] } });
+let duplicateRowQueries = 0;
+const originalRowQuery = row.querySelectorAll;
+row.querySelectorAll = (selector) => {
+  duplicateRowQueries += 1;
+  return originalRowQuery(selector);
+};
+api.collectHandles(collectionDialog, 'owner', collectedHandles, api.MODE.REMOVE_FOLLOWERS, 50);
+assert.equal(duplicateRowQueries, 0, 'already validated handles must skip duplicate row scans');
+row.querySelectorAll = originalRowQuery;
+const cappedHandles = new Set();
+api.collectHandles(collectionDialog, 'owner', cappedHandles, api.MODE.REMOVE_FOLLOWERS, 0);
+assert.equal(cappedHandles.size, 0, 'collection must respect its requested limit');
 
 storage.set(api.CONFIG.storageKey, JSON.stringify(validState));
 assert.equal(api.readState().queue[0], 'alice');
