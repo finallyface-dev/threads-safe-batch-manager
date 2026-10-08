@@ -1,12 +1,12 @@
 // ==UserScript==
-// @name         Threads 粉絲與追蹤批次管理（確認與停止版）
-// @name:zh-TW   Threads 粉絲與追蹤批次管理（確認與停止版）
-// @name:en      Threads Follower and Following Batch Manager (Confirm & Stop)
+// @name         Threads 工具箱｜粉絲管理・文字複製・乾淨連結
+// @name:zh-TW   Threads 工具箱｜粉絲管理・文字複製・乾淨連結
+// @name:en      Threads Toolkit — Follower Manager, Copy Text & Clean Links
 // @namespace    urn:userscript:threads-safe-batch-manager
-// @version      1.3.0
-// @description  預覽並勾選帳號後批次移除粉絲或取消追蹤，也可啟用貼文文字與乾淨連結複製工具。提供確認、暫停、停止及等待時間估算。
-// @description:zh-TW 預覽並勾選帳號後批次移除粉絲或取消追蹤，也可啟用貼文文字與乾淨連結複製工具。提供確認、暫停、停止及等待時間估算。
-// @description:en Preview and select accounts for batch follower management, or enable tools to copy visible post text and clean post links. Includes confirmation, pause, stop, and waiting-time estimates.
+// @version      1.3.1
+// @description  在 Threads 加入實用工具：預覽並勾選帳號後批次移除粉絲或取消追蹤，也能複製貼文文字與乾淨連結。提供操作確認、暫停、停止及等待時間估算。
+// @description:zh-TW 在 Threads 加入實用工具：預覽並勾選帳號後批次移除粉絲或取消追蹤，也能複製貼文文字與乾淨連結。提供操作確認、暫停、停止及等待時間估算。
+// @description:en Useful tools for Threads: preview and select accounts to remove followers or unfollow in batches, copy post text, and copy clean links. Includes confirmation, pause, stop, and waiting-time estimates.
 // @homepageURL  https://github.com/finallyface-dev/threads-safe-batch-manager
 // @supportURL   https://github.com/finallyface-dev/threads-safe-batch-manager/issues
 // @license      MIT
@@ -20,7 +20,7 @@
   'use strict';
 
   /*
-   * Threads 粉絲與追蹤批次管理
+   * Threads 工具箱
    *
    * 設計原則：
    * - 只使用 Threads 頁面上可見的 DOM 控制項。
@@ -287,7 +287,7 @@
     }
 
     if (lastError) {
-      console.debug('[Threads 批次管理] 等待控制項時收到錯誤：', lastError);
+      console.debug('[Threads 工具箱] 等待控制項時收到錯誤：', lastError);
     }
     return null;
   }
@@ -884,9 +884,9 @@
         button[hidden] { display: none; }
         .footnote { margin: 10px 0 0; color: #667085; font-size: 11px; }
       </style>
-      <section class="panel" aria-label="Threads 粉絲與追蹤批次管理">
+      <section class="panel" aria-label="Threads 工具箱">
         <header class="header">
-          <strong>Threads 批次管理</strong>
+          <strong>Threads 工具箱</strong>
           <button class="collapse" type="button" aria-expanded="true">收合</button>
         </header>
         <div class="body">

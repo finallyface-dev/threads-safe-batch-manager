@@ -1,6 +1,6 @@
-# Threads 粉絲與追蹤批次管理
+# Threads 工具箱｜粉絲管理・文字複製・乾淨連結
 
-這是一個適用於 Threads 網頁版的開源 userscript。它讓使用者先掃描並預覽自己的名單，再逐筆移除粉絲或取消追蹤帳號。
+在 Threads 加入實用工具：預覽並勾選帳號後批次移除粉絲或取消追蹤，也能複製貼文文字與乾淨連結。提供操作確認、暫停、停止及等待時間估算。
 
 如果你覺得這個腳本有用，請到 [GitHub 專案頁面](https://github.com/finallyface-dev/threads-safe-batch-manager)給我一顆星星。
 

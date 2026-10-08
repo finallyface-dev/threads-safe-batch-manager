@@ -1,6 +1,6 @@
-# Threads Follower and Following Batch Manager (Confirm & Stop)
+# Threads Toolkit — Follower Manager, Copy Text & Clean Links
 
-Preview your Threads followers or following list, select the accounts you want to manage, and confirm the batch before removing followers or unfollowing accounts one at a time.
+Useful tools for Threads: preview and select accounts to remove followers or unfollow in batches, copy post text, and copy clean links. Includes confirmation, pause, stop, and waiting-time estimates.
 
 If you find this script useful, please give it a star on [GitHub](https://github.com/finallyface-dev/threads-safe-batch-manager).
 

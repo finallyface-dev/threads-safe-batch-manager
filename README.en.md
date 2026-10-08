@@ -1,4 +1,4 @@
-# Threads Follower and Following Batch Manager (Confirm & Stop)
+# Threads Toolkit — Follower Manager, Copy Text & Clean Links
 
 Preview your Threads followers or following list, select the accounts you want to manage, and confirm the batch before removing followers or unfollowing accounts one at a time. The panel includes individual selection, Select all, Deselect all, a waiting-time estimate, pause, skip, and stop controls.
 
