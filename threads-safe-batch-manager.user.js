@@ -3,7 +3,7 @@
 // @name:zh-TW   Threads 粉絲與追蹤批次管理（確認與停止版）
 // @name:en      Threads Follower and Following Batch Manager (Confirm & Stop)
 // @namespace    urn:userscript:threads-safe-batch-manager
-// @version      1.1.1
+// @version      1.2.0
 // @description  在 Threads 網頁版加入批次管理面板。使用者預覽並確認後，可逐筆移除粉絲或取消追蹤；腳本不使用未公開 API，也不繞過驗證或操作限制。
 // @description:zh-TW 在 Threads 網頁版加入批次管理面板。使用者預覽並確認後，可逐筆移除粉絲或取消追蹤；腳本不使用未公開 API，也不繞過驗證或操作限制。
 // @description:en Adds a user-confirmed batch panel to remove followers or unfollow accounts on Threads. It uses visible page controls only and does not bypass verification or action limits.
@@ -679,14 +679,56 @@
       return;
     }
 
+    runtime.ui.preview.replaceChildren();
+    runtime.ui.delay.onchange = null;
     if (!handles.length) {
       runtime.ui.preview.textContent = '尚未建立預覽。';
       return;
     }
 
-    const examples = handles.slice(0, 5).map((handle) => `@${handle}`).join('、');
-    const suffix = handles.length > 5 ? `，另有 ${handles.length - 5} 筆` : '';
-    runtime.ui.preview.textContent = `本批共 ${handles.length} 筆：${examples}${suffix}`;
+    const summary = document.createElement('p');
+    const list = document.createElement('div');
+    list.style.cssText = 'max-height:180px;overflow:auto;display:grid;gap:6px';
+    const checkboxes = [];
+    const updateSelection = () => {
+      if (readState()) {
+        return;
+      }
+      runtime.preview = handles.filter((_handle, index) => checkboxes[index].checked);
+      const seconds = clampInteger(runtime.ui.delay.value, 8, 30, 10);
+      const minutes = Math.ceil(Math.max(0, runtime.preview.length - 1) * seconds / 60);
+      summary.textContent = `已選 ${runtime.preview.length}/${handles.length} 筆。等待間隔約 ${minutes} 分鐘，另需頁面載入與確認時間。`;
+      runtime.ui.startButton.disabled = runtime.scanning || runtime.preview.length === 0;
+    };
+    for (const handle of handles) {
+      const label = document.createElement('label');
+      label.style.cssText = 'display:flex;align-items:center;gap:8px';
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = true;
+      checkbox.style.width = 'auto';
+      checkbox.addEventListener('change', updateSelection);
+      checkboxes.push(checkbox);
+      label.append(checkbox, document.createTextNode(`@${handle}`));
+      list.append(label);
+    }
+    const controls = document.createElement('div');
+    for (const [text, checked] of [['全選', true], ['取消全選', false]]) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = text;
+      button.addEventListener('click', () => {
+        if (runtime.scanning || readState()) {
+          return;
+        }
+        checkboxes.forEach((checkbox) => { checkbox.checked = checked; });
+        updateSelection();
+      });
+      controls.append(button);
+    }
+    runtime.ui.preview.append(summary, controls, list);
+    runtime.ui.delay.onchange = updateSelection;
+    updateSelection();
   }
 
   function syncUiFromState() {
