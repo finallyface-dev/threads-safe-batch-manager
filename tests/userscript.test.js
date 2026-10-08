@@ -11,7 +11,7 @@ const instrumented = source.replace(
   `\n  globalThis.__userscriptTest = {\n` +
   `    CONFIG, MODE, LABELS, runtime, sanitizeState, readState, saveState,\n` +
   `    normalizeText, profileTabBoundary, findUniqueProfileMore, findPrimaryProfileRelation,\n` +
-  `    relationRowForLink, collectHandles\n` +
+  `    relationRowForLink, collectHandles, cleanPostUrl\n` +
   `  };\n})();`
 );
 
@@ -67,6 +67,10 @@ vm.runInContext(instrumented, context, { filename: 'threads-safe-batch-manager.u
 
 const api = context.__userscriptTest;
 assert.ok(api, 'instrumented userscript must expose test API');
+assert.equal(api.cleanPostUrl('/@alice/post/ABC_123?utm_source=test#reply'), 'https://www.threads.com/@alice/post/ABC_123');
+assert.equal(api.cleanPostUrl('https://example.com/@alice/post/ABC'), null);
+assert.equal(api.cleanPostUrl('/@alice'), null);
+assert.equal(api.cleanPostUrl('javascript:alert(1)'), null);
 
 const validState = {
   version: 1,
@@ -230,7 +234,7 @@ assert.equal(api.runtime.stopped, true);
 assert.equal(storage.has(api.CONFIG.storageKey), false, 'failed writes must remove an older active snapshot when possible');
 sessionStorage.setItem = originalSetItem;
 
-const eventCallbacks = [...source.matchAll(/addEventListener\(\s*['"][^'"]+['"]\s*,\s*([A-Za-z_$][\w$]*)/g)]
+const eventCallbacks = [...source.matchAll(/addEventListener\(\s*['"][^'"]+['"]\s*,\s*([A-Za-z_$][\w$]*)\s*(?=[,)])/g)]
   .map((match) => match[1]);
 for (const callback of eventCallbacks) {
   assert.match(source, new RegExp(`(?:function|const|let|var)\\s+${callback}\\b`), `missing callback: ${callback}`);

@@ -3,10 +3,10 @@
 // @name:zh-TW   Threads 粉絲與追蹤批次管理（確認與停止版）
 // @name:en      Threads Follower and Following Batch Manager (Confirm & Stop)
 // @namespace    urn:userscript:threads-safe-batch-manager
-// @version      1.2.1
-// @description  在 Threads 網頁版加入批次管理面板。使用者預覽並確認後，可逐筆移除粉絲或取消追蹤；腳本不使用未公開 API，也不繞過驗證或操作限制。
-// @description:zh-TW 在 Threads 網頁版加入批次管理面板。使用者預覽並確認後，可逐筆移除粉絲或取消追蹤；腳本不使用未公開 API，也不繞過驗證或操作限制。
-// @description:en Preview and select up to 50 accounts to remove followers or unfollow on Threads. Includes batch confirmation, pause, stop, and a waiting-time estimate. Uses visible page controls without bypassing verification or action limits.
+// @version      1.3.0
+// @description  預覽並勾選帳號後批次移除粉絲或取消追蹤，也可啟用貼文文字與乾淨連結複製工具。提供確認、暫停、停止及等待時間估算。
+// @description:zh-TW 預覽並勾選帳號後批次移除粉絲或取消追蹤，也可啟用貼文文字與乾淨連結複製工具。提供確認、暫停、停止及等待時間估算。
+// @description:en Preview and select accounts for batch follower management, or enable tools to copy visible post text and clean post links. Includes confirmation, pause, stop, and waiting-time estimates.
 // @homepageURL  https://github.com/finallyface-dev/threads-safe-batch-manager
 // @supportURL   https://github.com/finallyface-dev/threads-safe-batch-manager/issues
 // @license      MIT
@@ -906,6 +906,7 @@
             </label>
           </div>
           <div class="preview">尚未建立預覽。</div>
+          <label style="display:flex;align-items:center;margin-top:10px"><input class="post-tools" type="checkbox" style="width:auto">啟用貼文文字／乾淨連結工具</label>
           <div class="status" data-tone="normal" aria-live="polite">待命。</div>
           <div class="actions">
             <button class="action scan" type="button">掃描並預覽</button>
@@ -953,6 +954,7 @@
     runtime.ui.resumeButton.addEventListener('click', resumePausedRun);
     runtime.ui.skipButton.addEventListener('click', skipPausedCurrentItem);
     runtime.ui.stopButton.addEventListener('click', stopAndClear);
+    setupPostTools(shadow.querySelector('.post-tools'));
 
     syncUiFromState();
   }
@@ -2293,6 +2295,109 @@
 
     syncUiFromState();
     updateStatus(message, tone);
+  }
+
+  function cleanPostUrl(href) {
+    try {
+      const url = new URL(href, window.location.origin);
+      if (url.origin !== window.location.origin ||
+        !/^\/@[a-z0-9._]+\/post\/[a-z0-9_-]+\/?$/i.test(url.pathname)) {
+        return null;
+      }
+      url.search = '';
+      url.hash = '';
+      return url.href;
+    } catch (_error) {
+      return null;
+    }
+  }
+
+  function setupPostTools(toggle) {
+    const toolbarSelector = '[data-tsbm-post-tools]';
+    let observer = null;
+    let timer = null;
+    const refresh = () => {
+      timer = null;
+      if (!toggle.checked || /\/(?:login|settings|direct|messages|accounts)(?:\/|$)/i.test(window.location.pathname)) {
+        document.querySelectorAll(toolbarSelector).forEach((toolbar) => toolbar.remove());
+        return;
+      }
+      for (const article of visibleElements(document, 'article, [role="article"]')) {
+        if (article.querySelector(toolbarSelector) || article.closest('[role="dialog"]')) {
+          continue;
+        }
+        const links = visibleElements(article, 'a[href]')
+          .filter((link) => link.closest('article, [role="article"]') === article);
+        const urls = new Set(links.map((link) => cleanPostUrl(link.getAttribute('href'))).filter(Boolean));
+        if (urls.size !== 1) {
+          continue;
+        }
+        const toolbar = document.createElement('div');
+        toolbar.setAttribute('data-tsbm-post-tools', '');
+        toolbar.style.cssText = 'display:flex;gap:8px;align-items:center;padding:8px;flex-wrap:wrap';
+        const status = document.createElement('span');
+        status.setAttribute('role', 'status');
+        for (const [label, kind] of [['複製貼文文字', 'text'], ['複製乾淨連結', 'link']]) {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.textContent = label;
+          button.addEventListener('click', async (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            try {
+              let content;
+              if (kind === 'link') {
+                const currentUrls = new Set(visibleElements(article, 'a[href]')
+                  .filter((link) => link.closest('article, [role="article"]') === article)
+                  .map((link) => cleanPostUrl(link.getAttribute('href'))).filter(Boolean));
+                if (currentUrls.size !== 1) {
+                  throw new Error('無法唯一確認貼文連結。');
+                }
+                content = [...currentUrls][0];
+              } else {
+                const textNodes = visibleElements(article, '[dir="auto"]')
+                  .filter((node) => node.closest('article, [role="article"]') === article &&
+                    !node.closest('button, a, [role="button"], [data-tsbm-post-tools]') &&
+                    !node.querySelector('[dir="auto"]'));
+                content = textNodes.map((node) => node.innerText.trim()).filter(Boolean).join('\n\n');
+                if (!content) {
+                  throw new Error('找不到可確認的貼文文字。');
+                }
+              }
+              await navigator.clipboard.writeText(content);
+              status.textContent = '已複製';
+            } catch (error) {
+              status.textContent = error.message || '複製失敗，請檢查剪貼簿權限。';
+            }
+          });
+          toolbar.append(button);
+        }
+        toolbar.append(status);
+        article.append(toolbar);
+      }
+    };
+    toggle.addEventListener('change', () => {
+      if (observer) {
+        observer.disconnect();
+        observer = null;
+      }
+      if (timer !== null) {
+        window.clearTimeout(timer);
+        timer = null;
+      }
+      if (toggle.checked) {
+        observer = new MutationObserver((records) => {
+          if (timer === null && records.some((record) =>
+            !record.target.closest?.(toolbarSelector) &&
+            [...record.addedNodes, ...record.removedNodes].some((node) =>
+              node.nodeType === 1 && !node.matches(toolbarSelector)))) {
+            timer = window.setTimeout(refresh, 300);
+          }
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
+      }
+      refresh();
+    });
   }
 
   function init() {

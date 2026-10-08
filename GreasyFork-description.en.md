@@ -6,6 +6,8 @@ If you find this script useful, please give it a star on [GitHub](https://github
 
 ## Features
 
+- Optional tools to copy identifiable visible post text and clean post links. Enable them in the panel; they are off by default. Collapsed text may be omitted, and posts without identifiable article containers are unsupported.
+
 - Separate modes for removing followers and unfollowing accounts.
 - A read-only preview of every account collected for the batch.
 - Individual checkboxes, Select all, and Deselect all. Only selected accounts are processed.

@@ -74,13 +74,20 @@ Meta 的 [Threads 使用條款](https://help.instagram.com/769983657850450)限�
 ## Greasy Fork 發布資訊
 
 - 授權：MIT
-- 版本：1.2.1
+- 版本：1.3.0
 - 程式碼形式：未壓縮、未混淆，保留函式與變數名稱
 - 外部程式碼：無
 - 反功能（antifeature）：無，因此 metadata 不加入不存在的 `@antifeature`
 - 適用網站：Threads.com
 
 ## 更新紀錄
+
+### 1.3.0
+
+- 新增可開關的貼文文字與乾淨連結複製工具，預設關閉。
+- 只在可辨識的 article 貼文容器加入按鈕，連結不明時停止複製。
+- 複製文字僅包含可辨識的可見內容，可能不包含折疊文字。
+- 功能構想參考 https://github.com/Jwander0820/threads-plugin，程式自行實作。
 
 ### 1.2.1
 

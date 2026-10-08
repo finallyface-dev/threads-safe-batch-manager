@@ -15,6 +15,10 @@ If you find this script useful, please give it a star on [GitHub](https://github
 
 ## Features
 
+- Optional post tools to copy identifiable visible text and post links without query parameters or fragments.
+- Enable post tools in the panel. They are off by default and require identifiable article containers. Current panel labels remain in Traditional Chinese.
+- Feature ideas reference [Threads Plugin](https://github.com/Jwander0820/threads-plugin). This implementation does not copy its code.
+
 - Remove followers or unfollow accounts in separate modes.
 - Read-only preview before any relationship change.
 - View every account in the preview and select accounts individually, select all, or deselect all.
