@@ -3,10 +3,10 @@
 // @name:zh-TW   Threads 粉絲與追蹤批次管理（確認與停止版）
 // @name:en      Threads Follower and Following Batch Manager (Confirm & Stop)
 // @namespace    urn:userscript:threads-safe-batch-manager
-// @version      1.2.0
+// @version      1.2.1
 // @description  在 Threads 網頁版加入批次管理面板。使用者預覽並確認後，可逐筆移除粉絲或取消追蹤；腳本不使用未公開 API，也不繞過驗證或操作限制。
 // @description:zh-TW 在 Threads 網頁版加入批次管理面板。使用者預覽並確認後，可逐筆移除粉絲或取消追蹤；腳本不使用未公開 API，也不繞過驗證或操作限制。
-// @description:en Adds a user-confirmed batch panel to remove followers or unfollow accounts on Threads. It uses visible page controls only and does not bypass verification or action limits.
+// @description:en Preview and select up to 50 accounts to remove followers or unfollow on Threads. Includes batch confirmation, pause, stop, and a waiting-time estimate. Uses visible page controls without bypassing verification or action limits.
 // @homepageURL  https://github.com/finallyface-dev/threads-safe-batch-manager
 // @supportURL   https://github.com/finallyface-dev/threads-safe-batch-manager/issues
 // @license      MIT

@@ -1,6 +1,10 @@
-# Threads Follower and Following Batch Manager
+# Threads Follower and Following Batch Manager (Confirm & Stop)
 
-An open-source userscript for the Threads web app. It lets users preview a small batch and then remove followers or unfollow accounts one at a time.
+Preview your Threads followers or following list, select the accounts you want to manage, and confirm the batch before removing followers or unfollowing accounts one at a time. The panel includes individual selection, Select all, Deselect all, a waiting-time estimate, pause, skip, and stop controls.
+
+If you find this script useful, please give it a star on [GitHub](https://github.com/finallyface-dev/threads-safe-batch-manager).
+
+[English description for Greasy Fork](GreasyFork-description.en.md)
 
 [繁體中文](README.md)
 
@@ -13,6 +17,8 @@ An open-source userscript for the Threads web app. It lets users preview a small
 
 - Remove followers or unfollow accounts in separate modes.
 - Read-only preview before any relationship change.
+- View every account in the preview and select accounts individually, select all, or deselect all.
+- Estimate waiting time from the selected account count and action delay. Page loading and confirmation take additional time.
 - Typed confirmation and a final confirmation dialog.
 - Confirmation applies to the whole batch, not to every account. If Threads presents a clearly identified native confirmation dialog, the script continues that confirmed batch by clicking the required confirmation control.
 - Maximum of 50 accounts per batch. The panel shows an extra risk warning above 25.
@@ -35,7 +41,7 @@ If your browser only displays the source, create a new script in your userscript
 2. Open your own profile and close any existing followers/following dialog.
 3. Select Remove followers or Unfollow in the panel.
 4. Set the batch cap and delay.
-5. Scan and review the preview.
+5. Scan, review the full preview, and deselect accounts you want to keep.
 6. Confirm the batch and enter the requested confirmation phrase.
 
 Removing a follower and unfollowing an account are different actions. See Meta's help pages for [removing a Threads follower](https://help.instagram.com/1414274879323976/) and [following or unfollowing on Threads](https://help.instagram.com/150298994419902/).
