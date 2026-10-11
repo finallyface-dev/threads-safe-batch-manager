@@ -3,7 +3,7 @@
 // @name:zh-TW   Threads 工具箱｜粉絲管理・文字複製・乾淨連結
 // @name:en      Threads Toolkit — Follower Manager, Copy Text & Clean Links
 // @namespace    urn:userscript:threads-safe-batch-manager
-// @version      1.3.1
+// @version      1.3.2
 // @description  在 Threads 加入實用工具：預覽並勾選帳號後批次移除粉絲或取消追蹤，也能複製貼文文字與乾淨連結。提供操作確認、暫停、停止及等待時間估算。
 // @description:zh-TW 在 Threads 加入實用工具：預覽並勾選帳號後批次移除粉絲或取消追蹤，也能複製貼文文字與乾淨連結。提供操作確認、暫停、停止及等待時間估算。
 // @description:en Useful tools for Threads: preview and select accounts to remove followers or unfollow in batches, copy post text, and copy clean links. Includes confirmation, pause, stop, and waiting-time estimates.
@@ -290,6 +290,30 @@
       console.debug('[Threads 工具箱] 等待控制項時收到錯誤：', lastError);
     }
     return null;
+  }
+
+  function assertScanNotCancelled() {
+    if (runtime.scanCancelled) {
+      throw new StopRequestedError();
+    }
+  }
+
+  async function waitForScan(getValue, timeoutMs = CONFIG.elementWaitMs, intervalMs = 200) {
+    const result = await waitFor(() => {
+      assertScanNotCancelled();
+      return getValue();
+    }, timeoutMs, intervalMs);
+    assertScanNotCancelled();
+    return result;
+  }
+
+  async function sleepDuringScan(milliseconds) {
+    const deadline = Date.now() + milliseconds;
+    assertScanNotCancelled();
+    while (Date.now() < deadline) {
+      await sleep(Math.min(100, deadline - Date.now()));
+      assertScanNotCancelled();
+    }
   }
 
   function clickVisibleElement(element) {
@@ -681,6 +705,7 @@
 
     runtime.ui.preview.replaceChildren();
     runtime.ui.delay.onchange = null;
+    runtime.ui.delay.oninput = null;
     if (!handles.length) {
       runtime.ui.preview.textContent = '尚未建立預覽。';
       return;
@@ -695,7 +720,8 @@
         return;
       }
       runtime.preview = handles.filter((_handle, index) => checkboxes[index].checked);
-      const seconds = clampInteger(runtime.ui.delay.value, 8, 30, 10);
+      const seconds = clampInteger(runtime.ui.delay.value,
+        CONFIG.minDelayMs / 1000, CONFIG.maxDelayMs / 1000, CONFIG.defaultDelayMs / 1000);
       const minutes = Math.ceil(Math.max(0, runtime.preview.length - 1) * seconds / 60);
       summary.textContent = `已選 ${runtime.preview.length}/${handles.length} 筆。等待間隔約 ${minutes} 分鐘，另需頁面載入與確認時間。`;
       runtime.ui.startButton.disabled = runtime.scanning || runtime.preview.length === 0;
@@ -728,6 +754,7 @@
     }
     runtime.ui.preview.append(summary, controls, list);
     runtime.ui.delay.onchange = updateSelection;
+    runtime.ui.delay.oninput = updateSelection;
     updateSelection();
   }
 
@@ -740,7 +767,8 @@
     const active = Boolean(state && ['handoff', 'running', 'paused'].includes(state.status));
     const running = Boolean(state && ['handoff', 'running'].includes(state.status));
 
-    runtime.ui.scanButton.disabled = active || runtime.scanning;
+    // The same button cancels a scan, including during UI refreshes.
+    runtime.ui.scanButton.disabled = active;
     runtime.ui.startButton.disabled = active || runtime.scanning || runtime.preview.length === 0;
     runtime.ui.mode.disabled = active || runtime.scanning;
     runtime.ui.limit.disabled = active || runtime.scanning;
@@ -799,6 +827,9 @@
         * { box-sizing: border-box; }
         .panel {
           width: min(360px, calc(100vw - 24px));
+          max-height: calc(100dvh - 36px);
+          display: flex;
+          flex-direction: column;
           border: 1px solid #d0d5dd;
           border-radius: 14px;
           background: #ffffff;
@@ -808,6 +839,7 @@
           overflow: hidden;
         }
         .header {
+          flex-shrink: 0;
           display: flex;
           align-items: center;
           justify-content: space-between;
@@ -825,7 +857,7 @@
           cursor: pointer;
           padding: 2px 6px;
         }
-        .body { padding: 14px; }
+        .body { padding: 14px; min-height: 0; overflow-y: auto; }
         .body[hidden] { display: none; }
         .notice {
           margin: 0 0 12px;
@@ -1022,6 +1054,7 @@
   }
 
   async function ensureRelationDialog(mode) {
+    assertScanNotCancelled();
     if (relationDialogs().length > 0) {
       throw new SafetyPauseError('畫面上已有粉絲／追蹤清單。請先關閉舊視窗，再重新掃描。');
     }
@@ -1043,8 +1076,9 @@
     }
 
     const beforeDialogs = new Set(visibleElements(document, '[role="dialog"]'));
+    assertScanNotCancelled();
     clickVisibleElement(followerCountButton);
-    let dialog = await waitFor(() => {
+    let dialog = await waitForScan(() => {
       const candidate = relationDialog();
       return candidate && !beforeDialogs.has(candidate) ? candidate : null;
     });
@@ -1065,9 +1099,10 @@
       if (!tab) {
         throw new SafetyPauseError('找不到指定的粉絲／追蹤分頁。');
       }
+      assertScanNotCancelled();
       clickVisibleElement(tab);
 
-      const selected = await waitFor(() => {
+      const selected = await waitForScan(() => {
         const currentDialog = relationDialog();
         return currentDialog && selectedRelationMode(currentDialog) === mode ? currentDialog : null;
       });
@@ -1076,7 +1111,7 @@
         throw new SafetyPauseError('無法切換到指定名單。');
       }
       dialog = selected;
-      await sleep(CONFIG.scanStepDelayMs);
+      await sleepDuringScan(CONFIG.scanStepDelayMs);
       dialog = relationDialog();
       if (!dialog || selectedRelationMode(dialog) !== mode ||
         !underlyingOwnProfileMatches(expectedOwnHandle)) {
@@ -1173,10 +1208,7 @@
     let stableRounds = 0;
     let previousCount = 0;
 
-    const firstProfileLink = await waitFor(() => {
-      if (runtime.scanCancelled) {
-        throw new StopRequestedError();
-      }
+    const firstProfileLink = await waitForScan(() => {
       dialog = relationDialog();
       return dialog && dialog.querySelector('a[href^="/@"]');
     });
@@ -1192,13 +1224,11 @@
     try {
       if (scrollContainer && scrollContainer.scrollTop > 0) {
         scrollContainer.scrollTop = 0;
-        await sleep(350);
+        await sleepDuringScan(350);
       }
 
       for (let round = 0; round < CONFIG.maxScanRounds; round += 1) {
-        if (runtime.scanCancelled) {
-          throw new StopRequestedError();
-        }
+        assertScanNotCancelled();
 
         const currentOwnHandle = getOwnHandle();
         const currentProfileHandle = handleFromPath();
@@ -1241,9 +1271,10 @@
           scrollContainer.scrollHeight,
           scrollContainer.scrollTop + step
         );
-        await sleep(CONFIG.scanStepDelayMs);
+        await sleepDuringScan(CONFIG.scanStepDelayMs);
       }
 
+      assertScanNotCancelled();
       return { handles: [...handles].slice(0, limit), ownHandle };
     } finally {
       const currentDialog = relationDialog();
@@ -1281,6 +1312,7 @@
     runtime.scanCancelled = false;
     runtime.preview = [];
     runtime.previewMode = null;
+    runtime.previewOwnHandle = null;
     runtime.ui.scanButton.textContent = '停止掃描';
     runtime.ui.startButton.disabled = true;
     runtime.ui.mode.disabled = true;
@@ -2312,6 +2344,70 @@
     }
   }
 
+  const POST_CONTAINER_SELECTOR = 'article, [role="article"], [data-pressable-container="true"]';
+
+  function currentPostUrl(article) {
+    const urls = new Set(visibleElements(article, 'a[href]')
+      .filter((link) => link.closest(POST_CONTAINER_SELECTOR) === article)
+      .map((link) => cleanPostUrl(link.getAttribute('href'))).filter(Boolean));
+    return urls.size === 1 ? [...urls][0] : null;
+  }
+
+  function postTextFromArticle(article) {
+    const articleSelector = POST_CONTAINER_SELECTOR;
+    const excludedSelector = 'button, [role="button"], [role="menu"], input, select, textarea, script, style, noscript, [data-tsbm-post-tools]';
+    const candidates = visibleElements(article, '[dir="auto"]')
+      .filter((node) => {
+        if (node.closest(articleSelector) !== article || node.closest(`a, ${excludedSelector}`)) {
+          return false;
+        }
+        for (let parent = node; parent; parent = parent.parentElement) {
+          const style = window.getComputedStyle(parent);
+          if (parent.hidden || parent.getAttribute('aria-hidden') === 'true' || style.display === 'none' ||
+            ['hidden', 'collapse'].includes(style.visibility) || Number(style.opacity) === 0) {
+            return false;
+          }
+        }
+        return true;
+      });
+    const candidateSet = new Set(candidates);
+    const roots = candidates.filter((node) => {
+      for (let parent = node.parentElement; parent && parent !== article; parent = parent.parentElement) {
+        if (candidateSet.has(parent)) {
+          return false;
+        }
+      }
+      return true;
+    });
+
+    const readText = (node, whiteSpace = 'normal') => {
+      if (node.nodeType === 3) {
+        const value = node.nodeValue || '';
+        if (['pre', 'pre-wrap', 'break-spaces'].includes(whiteSpace)) {
+          return value;
+        }
+        return whiteSpace === 'pre-line' ? value.replace(/[^\S\n]+/g, ' ') : value.replace(/\s+/g, ' ');
+      }
+      if (!(node instanceof Element) || node.matches(excludedSelector) ||
+        node.matches(articleSelector) || node.hidden || node.getAttribute('aria-hidden') === 'true') {
+        return '';
+      }
+      const style = window.getComputedStyle(node);
+      if (style.display === 'none' || ['hidden', 'collapse'].includes(style.visibility) || Number(style.opacity) === 0) {
+        return '';
+      }
+      if (node.tagName === 'BR') {
+        return '\n';
+      }
+      const value = [...node.childNodes].map((child) => readText(child, style.whiteSpace)).join('');
+      return /^(block|flex|grid|flow-root|list-item|table)/.test(style.display) ? `\n${value}\n` : value;
+    };
+
+    return roots.map((node) => readText(node).replace(/\r\n?/g, '\n')
+      .replace(/[\t\f\v ]+/g, ' ').replace(/ *\n */g, '\n').replace(/\n{3,}/g, '\n\n').trim())
+      .filter(Boolean).join('\n\n');
+  }
+
   function setupPostTools(toggle) {
     const toolbarSelector = '[data-tsbm-post-tools]';
     let observer = null;
@@ -2322,14 +2418,13 @@
         document.querySelectorAll(toolbarSelector).forEach((toolbar) => toolbar.remove());
         return;
       }
-      for (const article of visibleElements(document, 'article, [role="article"]')) {
-        if (article.querySelector(toolbarSelector) || article.closest('[role="dialog"]')) {
+      for (const article of visibleElements(document, POST_CONTAINER_SELECTOR)) {
+        const hasOwnToolbar = [...article.querySelectorAll(toolbarSelector)]
+          .some((toolbar) => toolbar.closest(POST_CONTAINER_SELECTOR) === article);
+        if (hasOwnToolbar || article.closest('[role="dialog"]')) {
           continue;
         }
-        const links = visibleElements(article, 'a[href]')
-          .filter((link) => link.closest('article, [role="article"]') === article);
-        const urls = new Set(links.map((link) => cleanPostUrl(link.getAttribute('href'))).filter(Boolean));
-        if (urls.size !== 1) {
+        if (!currentPostUrl(article)) {
           continue;
         }
         const toolbar = document.createElement('div');
@@ -2345,21 +2440,19 @@
             event.preventDefault();
             event.stopPropagation();
             try {
+              if (!toggle.checked || !isVisible(article) || article.closest('[role="dialog"]') ||
+                /\/(?:login|settings|direct|messages|accounts)(?:\/|$)/i.test(window.location.pathname)) {
+                throw new Error('目前頁面無法使用貼文工具。');
+              }
+              const postUrl = currentPostUrl(article);
+              if (!postUrl) {
+                throw new Error('無法唯一確認貼文連結。');
+              }
               let content;
               if (kind === 'link') {
-                const currentUrls = new Set(visibleElements(article, 'a[href]')
-                  .filter((link) => link.closest('article, [role="article"]') === article)
-                  .map((link) => cleanPostUrl(link.getAttribute('href'))).filter(Boolean));
-                if (currentUrls.size !== 1) {
-                  throw new Error('無法唯一確認貼文連結。');
-                }
-                content = [...currentUrls][0];
+                content = postUrl;
               } else {
-                const textNodes = visibleElements(article, '[dir="auto"]')
-                  .filter((node) => node.closest('article, [role="article"]') === article &&
-                    !node.closest('button, a, [role="button"], [data-tsbm-post-tools]') &&
-                    !node.querySelector('[dir="auto"]'));
-                content = textNodes.map((node) => node.innerText.trim()).filter(Boolean).join('\n\n');
+                content = postTextFromArticle(article);
                 if (!content) {
                   throw new Error('找不到可確認的貼文文字。');
                 }

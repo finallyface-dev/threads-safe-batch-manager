@@ -28,5 +28,7 @@ Run these checks before opening a pull request:
 
 ```bash
 node --check threads-safe-batch-manager.user.js
-node tests/userscript.test.js
+node --test tests/*.test.js
 ```
+
+Post-tool or layout changes should also pass `node tests/post-tools.browser.js` with Playwright and Chromium available. See the README for optional module and browser executable environment variables. All website requests in that suite are served by local fixtures.

@@ -14,13 +14,13 @@
 ## 功能
 
 - 可選擇啟用貼文工具：複製可辨識的可見文字，或移除網址參數與錨點後複製貼文連結。
-- 貼文工具預設關閉，可在面板開啟；目前僅支援可辨識的 article 貼文容器。
+- 貼文工具預設關閉，可在面板開啟；支援可辨識的文章容器與目前 Threads 使用的可點擊貼文容器。
 - 功能構想參考 [Threads Plugin](https://github.com/Jwander0820/threads-plugin)；本次程式自行實作，未複製其程式碼。
 
 - 移除粉絲：讓對方不再追蹤你。
 - 取消追蹤：停止追蹤預覽名單中的帳號。
 - 掃描階段只讀取清單，不修改追蹤關係。
-- 開始前顯示本批數量與部分帳號名稱。
+- 開始前顯示本批數量與完整帳號名單。
 - 預覽可查看全部帳號，逐筆勾選、全選或取消全選，並顯示預估等待時間。
 - 使用者必須輸入確認詞並通過最後確認。
 - 確認以「整批」為單位，不會在每個帳號前再次詢問。若 Threads 顯示明確的原生確認視窗，腳本會接著按下該批操作所需的確認按鈕。
@@ -28,6 +28,7 @@
 - 支援暫停、略過目前項目，以及立即停止並清除暫存。
 - 遇到 CAPTCHA、操作限制、帳號切換或不明介面時停止。
 - 重新載入、上一頁／下一頁及 BFCache 還原後不會直接續跑。
+- 等待名單開啟、切換分頁或捲動載入時可停止掃描。面板高度不足時可捲動，調整間隔時即時更新預估等待時間。
 
 ## 安裝
 
@@ -76,6 +77,7 @@
 - 網站：`https://www.threads.com/*`
 - 介面文字：繁體中文、簡體中文及英文
 - 2026-08-24 已在 Edge 的 Threads 繁體中文介面做唯讀 DOM 與選擇器驗證。
+- 2026-10-11 已唯讀檢查 Threads 首頁貼文容器結構；本次貼文複製與取消掃描修正另以本機模擬頁面／測試驗證。
 - 完整的真實批次執行沒有在使用者帳號上測試，以免製造追蹤關係變更。
 - 其他瀏覽器、userscript manager 與介面語言組合尚未逐一驗證。
 
@@ -85,20 +87,24 @@ GitHub `main` 是開發來源。正式版本會使用與 userscript `@version` �
 
 ## 開發與測試
 
-本專案不需要建置或外部套件。
+腳本與基本離線測試不需要建置或外部套件。
 
 ```bash
 node --check threads-safe-batch-manager.user.js
-node --test tests/userscript.test.js
+node --test tests/*.test.js
 ```
 
-測試涵蓋狀態資料驗證、錯誤 storage、事件 callback、關係文字、profile selector 與關係清單列驗證。測試不會登入 Threads，也不會變更任何帳號關係。
+基本測試涵蓋狀態驗證、暫存錯誤、名單勾選、掃描取消、網址與控制項辨識。測試不會登入 Threads，也不會變更任何帳號關係。
+
+貼文複製與面板排版另有瀏覽器測試。開發環境需提供 Playwright 與其 Chromium，再執行 `node tests/post-tools.browser.js`。也可用 `PLAYWRIGHT_MODULE` 指向既有 Playwright 套件，並以 `PLAYWRIGHT_CHROMIUM_EXECUTABLE` 指定本機 Chromium 系列瀏覽器。測試會使用獨立暫存瀏覽器，攔截所有網站請求並提供本機測試內容，不會連到 Threads。
 
 ## 專案檔案
 
 - `threads-safe-batch-manager.user.js`：完整 userscript 原始碼。
 - `GreasyFork-發布說明.md`：Greasy Fork 描述、使用方式與披露內容。
 - `tests/userscript.test.js`：不連線的 Node.js 測試。
+- `tests/scan-preview.test.js`：掃描取消與預覽勾選回歸測試。
+- `tests/post-tools.browser.js`：貼文工具及小視窗面板的瀏覽器測試。
 - `SECURITY.md`：安全問題回報方式。
 - `CONTRIBUTING.md`：貢獻與安全邊界。
 - `SHA256SUMS`：正式 userscript 檔案的 SHA-256 檢查值。

@@ -16,7 +16,7 @@ If you find this script useful, please give it a star on [GitHub](https://github
 ## Features
 
 - Optional post tools to copy identifiable visible text and post links without query parameters or fragments.
-- Enable post tools in the panel. They are off by default and require identifiable article containers. Current panel labels remain in Traditional Chinese.
+- Enable post tools in the panel. They are off by default and support identifiable article containers and the pressable post containers currently used by Threads. Current panel labels remain in Traditional Chinese.
 - Feature ideas reference [Threads Plugin](https://github.com/Jwander0820/threads-plugin). This implementation does not copy its code.
 
 - Remove followers or unfollow accounts in separate modes.
@@ -28,6 +28,7 @@ If you find this script useful, please give it a star on [GitHub](https://github
 - Maximum of 50 accounts per batch. The panel shows an extra risk warning above 25.
 - Fixed delay of 8 to 30 seconds between actions.
 - Pause, explicitly skip the current item, or stop and clear session data.
+- Cancel scanning while a list opens, tabs switch, or scrolling settles. The panel scrolls on short screens, and waiting-time estimates update while editing the delay.
 - Fail closed on CAPTCHA, rate limits, account changes, ambiguous controls, reloads, history navigation, and BFCache restores.
 - No private API, telemetry, ads, tracking, external code, or custom update checker.
 
@@ -63,16 +64,20 @@ Removing a follower and unfollowing an account are different actions. See Meta's
 
 ## Development
 
-No build step or external package is required.
+The userscript and basic offline tests require no build step or external package.
 
 ```bash
 node --check threads-safe-batch-manager.user.js
-node --test tests/userscript.test.js
+node --test tests/*.test.js
 ```
 
 The tests are offline. They do not sign in to Threads or modify account relationships.
 
+For the post-copy and panel-layout browser suite, provide Playwright and its Chromium browser, then run `node tests/post-tools.browser.js`. Alternatively, set `PLAYWRIGHT_MODULE` to an existing Playwright package and `PLAYWRIGHT_CHROMIUM_EXECUTABLE` to a local Chromium-based browser. The suite uses a separate temporary browser and intercepts website requests with local fixtures; it does not connect to Threads.
+
 On 2026-08-24, the current Traditional Chinese Threads DOM and selectors were checked read-only in Edge. A complete live batch was not run against a user account. Other browser, userscript-manager, and interface-language combinations remain unverified.
+
+On 2026-10-11, the current Threads home feed post-container structure was inspected read-only. Copy-tool and scan-cancellation changes are additionally covered by local fixtures; this is not a live batch execution test.
 
 The `main` branch is the development source. Formal versions use a Git tag matching the userscript `@version`, such as `v1.1.0`. Use a tag rather than raw `main` when you need an immutable version.
 

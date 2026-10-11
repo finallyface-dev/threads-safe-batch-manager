@@ -6,7 +6,7 @@ If you find this script useful, please give it a star on [GitHub](https://github
 
 ## Features
 
-- Optional tools to copy identifiable visible post text and clean post links. Enable them in the panel; they are off by default. Collapsed text may be omitted, and posts without identifiable article containers are unsupported.
+- Optional tools to copy identifiable visible post text and clean post links. Enable them in the panel; they are off by default. Supports identifiable articles and current Threads pressable post containers. Collapsed text may be omitted, and ambiguous post links prevent copying.
 
 - Separate modes for removing followers and unfollowing accounts.
 - A read-only preview of every account collected for the batch.
@@ -15,6 +15,7 @@ If you find this script useful, please give it a star on [GitHub](https://github
 - An adjustable delay of 8–30 seconds and an estimate of waiting time. Page loading and confirmation take additional time.
 - Typed batch confirmation and a final confirmation dialog.
 - Pause after the current account, explicitly skip a paused item, or stop and clear the batch.
+- Stop scanning while a list opens, tabs switch, or scrolling settles. The panel scrolls on short screens, and waiting-time estimates update as you edit the delay.
 - Automatic pause when account identity changes, controls are unclear, or Threads displays verification, errors, or action limits.
 
 ## How to use
