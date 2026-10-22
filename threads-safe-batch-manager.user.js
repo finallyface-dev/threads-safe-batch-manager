@@ -3,7 +3,7 @@
 // @name:zh-TW   Threads 工具箱｜粉絲管理・文字複製・乾淨連結
 // @name:en      Threads Toolkit — Follower Manager, Copy Text & Clean Links
 // @namespace    urn:userscript:threads-safe-batch-manager
-// @version      1.3.2
+// @version      1.3.3
 // @description  在 Threads 加入實用工具：預覽並勾選帳號後批次移除粉絲或取消追蹤，也能複製貼文文字與乾淨連結。提供操作確認、暫停、停止及等待時間估算。
 // @description:zh-TW 在 Threads 加入實用工具：預覽並勾選帳號後批次移除粉絲或取消追蹤，也能複製貼文文字與乾淨連結。提供操作確認、暫停、停止及等待時間估算。
 // @description:en Useful tools for Threads: preview and select accounts to remove followers or unfollow in batches, copy post text, and copy clean links. Includes confirmation, pause, stop, and waiting-time estimates.
@@ -278,7 +278,8 @@
           return value;
         }
       } catch (error) {
-        if (error instanceof StopRequestedError) {
+        if (error instanceof StopRequestedError || error instanceof PauseRequestedError ||
+          error instanceof SafetyPauseError) {
           throw error;
         }
         lastError = error;
@@ -1578,6 +1579,18 @@
     });
   }
 
+  async function waitForRun(getValue, token, timeoutMs = CONFIG.elementWaitMs, allowPause = false) {
+    const result = await waitFor(() => {
+      assertRunMayContinue(token, allowPause);
+      const value = getValue();
+      assertRunMayContinue(token, allowPause);
+      return value;
+    }, timeoutMs);
+    // Check again even when the final polling interval reaches the timeout.
+    assertRunMayContinue(token, allowPause);
+    return result;
+  }
+
   function profileTabBoundary(profileRegion, currentHandle = handleFromPath()) {
     if (!currentHandle) {
       return null;
@@ -1619,7 +1632,7 @@
     return candidates.length === 1 ? candidates[0] : null;
   }
 
-  async function openProfileMenu(profileRegion) {
+  async function openProfileMenu(profileRegion, token, allowPause = false) {
     const moreButton = findUniqueProfileMore(profileRegion);
 
     if (!moreButton) {
@@ -1631,8 +1644,9 @@
       throw new SafetyPauseError('畫面上已有其他選單。請先關閉選單，再繼續批次。');
     }
 
+    assertRunMayContinue(token, allowPause);
     clickVisibleElement(moreButton);
-    const menu = await waitFor(() =>
+    const menu = await waitForRun(() =>
       visibleElements(document, '[role="menu"]').find((candidate) =>
         !beforeMenus.has(candidate) &&
         visibleElements(candidate, '[role="menuitem"]').some((item) =>
@@ -1640,7 +1654,7 @@
           matchesLabels(item, LABELS.knownProfileMenuItem)
         )
       ) || null,
-    5000);
+    token, 5000, allowPause);
     if (!menu) {
       throw new SafetyPauseError('無法確認本次開啟的個人檔案選單。');
     }
@@ -1659,7 +1673,7 @@
     }
 
     assertRunMayContinue(state.token);
-    let menu = await openProfileMenu(profileRegion);
+    let menu = await openProfileMenu(profileRegion, state.token);
     const removeItem = findActionInSurface(menu, LABELS.removeFollower);
 
     if (!removeItem) {
@@ -1690,9 +1704,9 @@
       assertRunMayContinue(state.token, true);
       clickVisibleElement(confirmButton);
 
-      const confirmationClosed = await waitFor(
+      const confirmationClosed = await waitForRun(
         () => !confirmationSurface.isConnected || !isVisible(confirmationSurface),
-        5000
+        state.token, 5000, true
       );
       if (!confirmationClosed) {
         throw new SafetyPauseError('移除確認視窗仍然開啟，無法確認操作是否完成。');
@@ -1707,12 +1721,13 @@
       throw new SafetyPauseError('移除後無法重新確認個人檔案。');
     }
 
-    menu = await openProfileMenu(currentRegion);
+    menu = await openProfileMenu(currentRegion, state.token, true);
     const stillPresent = findActionInSurface(menu, LABELS.removeFollower);
     if (stillPresent) {
       throw new SafetyPauseError('「移除粉絲」仍出現在選單中，無法確認操作成功。');
     }
 
+    assertRunMayContinue(state.token, true);
     return { status: 'completed', message: '已移除一位粉絲。' };
   }
 
@@ -1775,7 +1790,7 @@
     await sleep(450);
     assertRunMayContinue(state.token, true);
 
-    const outcome = await waitFor(() => {
+    const outcome = await waitForRun(() => {
       profileRegion = getProfileRegion();
       const currentRelation = profileRegion ? findPrimaryProfileRelation(profileRegion) : null;
       if (currentRelation && currentRelation.state === 'notFollowing') {
@@ -1791,7 +1806,7 @@
         }
       }
       return null;
-    }, 5000);
+    }, state.token, 5000, true);
 
     if (!outcome) {
       throw new SafetyPauseError('按下「追蹤中」後找不到明確的完成狀態或「取消追蹤」控制項。');
@@ -1804,11 +1819,11 @@
     assertRunMayContinue(state.token, true);
     clickVisibleElement(outcome.element);
 
-    const verified = await waitFor(() => {
+    const verified = await waitForRun(() => {
       const currentRegion = getProfileRegion();
       const currentRelation = currentRegion ? findPrimaryProfileRelation(currentRegion) : null;
       return currentRelation && currentRelation.state === 'notFollowing';
-    }, 6000);
+    }, state.token, 6000, true);
 
     if (!verified) {
       throw new SafetyPauseError('取消追蹤後無法確認按鈕已變成「追蹤」。');
@@ -1991,10 +2006,7 @@
       syncUiFromState();
 
       const result = await processCurrentTarget(state);
-      state = readState();
-      if (!state || runtime.stopped) {
-        throw new StopRequestedError();
-      }
+      state = assertRunMayContinue(state.token, true);
 
       state = saveState({
         ...state,
@@ -2412,12 +2424,47 @@
     const toolbarSelector = '[data-tsbm-post-tools]';
     let observer = null;
     let timer = null;
+    const isPostMutation = (record) => {
+      const target = record.target;
+      if (!(target instanceof Element) || target.closest(toolbarSelector)) {
+        return false;
+      }
+      const containsPost = (node) => node.matches(POST_CONTAINER_SELECTOR) ||
+        Boolean(node.querySelector(POST_CONTAINER_SELECTOR));
+      const containsLink = (node) => node.matches('a[href]') || Boolean(node.querySelector('a[href]'));
+      if (record.type === 'attributes') {
+        if (record.attributeName === 'href') {
+          return target.matches('a') && Boolean(target.closest(POST_CONTAINER_SELECTOR));
+        }
+        if (record.attributeName === 'data-pressable-container') {
+          return target.matches(POST_CONTAINER_SELECTOR) || record.oldValue === 'true';
+        }
+        if (record.attributeName === 'role') {
+          const roles = [record.oldValue, target.getAttribute('role')];
+          return roles.includes('article') || (roles.includes('dialog') && containsPost(target));
+        }
+        // Visibility can change on a post, its permalink, or an ancestor of either.
+        // Ignore unrelated attributes, including styles on ordinary post text.
+        return containsPost(target) ||
+          (Boolean(target.closest(POST_CONTAINER_SELECTOR)) && containsLink(target));
+      }
+      return [...record.addedNodes, ...record.removedNodes].some((node) =>
+        node instanceof Element && !node.matches(toolbarSelector) &&
+        (containsPost(node) || (Boolean(target.closest(POST_CONTAINER_SELECTOR)) && containsLink(node))));
+    };
     const refresh = () => {
       timer = null;
       if (!toggle.checked || /\/(?:login|settings|direct|messages|accounts)(?:\/|$)/i.test(window.location.pathname)) {
         document.querySelectorAll(toolbarSelector).forEach((toolbar) => toolbar.remove());
         return;
       }
+      document.querySelectorAll(toolbarSelector).forEach((toolbar) => {
+        const article = toolbar.parentElement;
+        if (!article?.matches(POST_CONTAINER_SELECTOR) || !isVisible(article) ||
+          article.closest('[role="dialog"]') || !currentPostUrl(article)) {
+          toolbar.remove();
+        }
+      });
       for (const article of visibleElements(document, POST_CONTAINER_SELECTOR)) {
         const hasOwnToolbar = [...article.querySelectorAll(toolbarSelector)]
           .some((toolbar) => toolbar.closest(POST_CONTAINER_SELECTOR) === article);
@@ -2480,14 +2527,17 @@
       }
       if (toggle.checked) {
         observer = new MutationObserver((records) => {
-          if (timer === null && records.some((record) =>
-            !record.target.closest?.(toolbarSelector) &&
-            [...record.addedNodes, ...record.removedNodes].some((node) =>
-              node.nodeType === 1 && !node.matches(toolbarSelector)))) {
+          if (timer === null && records.some(isPostMutation)) {
             timer = window.setTimeout(refresh, 300);
           }
         });
-        observer.observe(document.body, { childList: true, subtree: true });
+        observer.observe(document.body, {
+          childList: true,
+          subtree: true,
+          attributes: true,
+          attributeOldValue: true,
+          attributeFilter: ['href', 'hidden', 'aria-hidden', 'class', 'style', 'role', 'data-pressable-container']
+        });
       }
       refresh();
     });

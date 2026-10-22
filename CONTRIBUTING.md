@@ -22,6 +22,7 @@ Changes must preserve these rules:
 - Keep the code readable and unminified for Greasy Fork review.
 - Update `@version` and the change notes when behavior changes.
 - Add or update offline tests where possible.
+- Update `SHA256SUMS` after final userscript edits. The release tests check the header, checksum, and version in the Greasy Fork notes.
 - Do not use real private handles or live account actions in test fixtures.
 
 Run these checks before opening a pull request:

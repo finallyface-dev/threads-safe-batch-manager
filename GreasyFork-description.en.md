@@ -4,6 +4,12 @@ Useful tools for Threads: preview and select accounts to remove followers or unf
 
 If you find this script useful, please give it a star on [GitHub](https://github.com/finallyface-dev/threads-safe-batch-manager).
 
+## 1.3.3 changes
+
+Batch waits recheck account identity, the target page, and platform restrictions before accepting a result. Stop and safety-pause signals end the wait instead of being retried as loading errors. Unknown action results are still not retried.
+
+Post tools now recheck existing links and visibility changes without repeatedly refreshing for their own toolbar updates. This release adds offline regression and release-integrity checks; it was not tested by removing followers or unfollowing on a real account.
+
 ## Features
 
 - Optional tools to copy identifiable visible post text and clean post links. Enable them in the panel; they are off by default. Supports identifiable articles and current Threads pressable post containers. Collapsed text may be omitted, and ambiguous post links prevent copying.

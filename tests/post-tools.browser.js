@@ -55,17 +55,19 @@ const fixtureSource = source.slice(0, initOffset) +
     await page.waitForFunction(() => window.copiedPostValues.length === 2);
     assert.equal(await page.evaluate(() => window.copiedPostValues[1]), 'https://www.threads.com/@alice/post/ABC');
 
-    await page.evaluate(() => {
+    const ambiguousStatuses = await page.evaluate(() => {
       const extra = document.createElement('a');
       extra.href = '/@alice/post/DIFFERENT';
       extra.textContent = 'Another post';
       document.querySelector('#post').append(extra);
+      return [...document.querySelectorAll('[data-tsbm-post-tools] button')].map((button) => {
+        button.click();
+        return document.querySelector('[data-tsbm-post-tools] [role="status"]').textContent;
+      });
     });
-    for (const label of ['複製貼文文字', '複製乾淨連結']) {
-      await page.getByRole('button', { name: label, exact: true }).click();
-      assert.equal(await page.locator('[data-tsbm-post-tools] [role="status"]').textContent(), '無法唯一確認貼文連結。');
-      assert.equal(await page.evaluate(() => window.copiedPostValues.length), 2, 'ambiguous post identity blocks both clipboard actions');
-    }
+    assert.deepEqual(ambiguousStatuses, ['無法唯一確認貼文連結。', '無法唯一確認貼文連結。']);
+    assert.equal(await page.evaluate(() => window.copiedPostValues.length), 2, 'ambiguous post identity blocks both clipboard actions');
+    await page.waitForFunction(() => !document.querySelector('[data-tsbm-post-tools]'));
 
     await page.uncheck('#toggle');
     assert.equal(await page.locator('[data-tsbm-post-tools]').count(), 0);
@@ -114,6 +116,67 @@ const fixtureSource = source.slice(0, initOffset) +
     await page.evaluate(() => history.pushState({}, '', '/@owner'));
     await page.uncheck('#toggle');
 
+    await page.setContent(`
+      <style>.hidden-post { display: none; }</style>
+      <input id="toggle" type="checkbox"><aside id="unrelated"></aside>
+      <section id="visibility"><article id="hydrating">
+        <a id="permalink" href="/@alice">Time</a><div id="post-text" dir="auto">Hydrated post</div>
+      </article></section>
+      <div id="role-card"><a href="/@alice/post/ROLE">Time</a><div dir="auto">Role post</div></div>
+      <div id="pressable-card"><a href="/@alice/post/PRESSABLE">Time</a><div dir="auto">Pressable post</div></div>`);
+    await page.evaluate(() => {
+      window.postRefreshSchedules = 0;
+      window.originalPostTimeout = window.setTimeout;
+      window.setTimeout = (callback, delay, ...args) => {
+        if (delay === 300) window.postRefreshSchedules += 1;
+        return window.originalPostTimeout(callback, delay, ...args);
+      };
+      __postToolsTest.setupPostTools(document.querySelector('#toggle'));
+    });
+    await page.check('#toggle');
+    assert.equal(await page.locator('[data-tsbm-post-tools]').count(), 0);
+    await page.evaluate(() => document.querySelector('#permalink').setAttribute('href', '/@alice/post/HYDRATED'));
+    await page.waitForFunction(() => document.querySelector('#hydrating > [data-tsbm-post-tools]'));
+    await page.waitForTimeout(650);
+    assert.equal(await page.evaluate(() => window.postRefreshSchedules), 1, 'toolbar insertion must not schedule its own refresh loop');
+    await page.evaluate(() => {
+      document.querySelector('#unrelated').style.color = 'red';
+      document.querySelector('#post-text').className = 'ordinary-text';
+      document.querySelector('[data-tsbm-post-tools] [role="status"]').textContent = 'Own status update';
+    });
+    await page.waitForTimeout(400);
+    assert.equal(await page.evaluate(() => window.postRefreshSchedules), 1, 'unrelated attributes, ordinary text styles and toolbar changes are ignored');
+
+    for (const [attribute, hiddenValue] of [['hidden', ''], ['aria-hidden', 'true'], ['class', 'hidden-post'], ['style', 'display:none']]) {
+      await page.evaluate(({ attribute, hiddenValue }) => document.querySelector('#visibility').setAttribute(attribute, hiddenValue), { attribute, hiddenValue });
+      await page.waitForFunction(() => !document.querySelector('#hydrating > [data-tsbm-post-tools]'));
+      await page.evaluate((attribute) => document.querySelector('#visibility').removeAttribute(attribute), attribute);
+      await page.waitForFunction(() => document.querySelector('#hydrating > [data-tsbm-post-tools]'));
+    }
+    for (const [id, attribute, value] of [['role-card', 'role', 'article'], ['pressable-card', 'data-pressable-container', 'true']]) {
+      await page.evaluate(({ id, attribute, value }) => document.getElementById(id).setAttribute(attribute, value), { id, attribute, value });
+      await page.waitForFunction((id) => document.getElementById(id).querySelector('[data-tsbm-post-tools]'), id);
+      await page.evaluate(({ id, attribute }) => document.getElementById(id).removeAttribute(attribute), { id, attribute });
+      await page.waitForFunction((id) => !document.getElementById(id).querySelector('[data-tsbm-post-tools]'), id);
+    }
+    await page.evaluate(() => document.querySelector('#visibility').setAttribute('role', 'dialog'));
+    await page.waitForFunction(() => !document.querySelector('#hydrating > [data-tsbm-post-tools]'));
+    await page.evaluate(() => document.querySelector('#visibility').removeAttribute('role'));
+    await page.waitForFunction(() => document.querySelector('#hydrating > [data-tsbm-post-tools]'));
+    await page.evaluate(() => document.querySelector('#permalink').removeAttribute('href'));
+    await page.waitForFunction(() => !document.querySelector('#hydrating > [data-tsbm-post-tools]'));
+    const schedulesBeforeDisable = await page.evaluate(() => window.postRefreshSchedules);
+    await page.evaluate(() => document.querySelector('#permalink').setAttribute('href', '/@alice/post/HYDRATED'));
+    await page.waitForFunction((previous) => window.postRefreshSchedules > previous, schedulesBeforeDisable);
+    await page.uncheck('#toggle');
+    await page.waitForTimeout(650);
+    assert.equal(await page.locator('[data-tsbm-post-tools]').count(), 0, 'disabling cancels a pending attribute-triggered refresh');
+    const schedulesAfterDisable = await page.evaluate(() => window.postRefreshSchedules);
+    await page.evaluate(() => document.querySelector('#role-card').setAttribute('role', 'article'));
+    await page.waitForTimeout(400);
+    assert.equal(await page.evaluate(() => window.postRefreshSchedules), schedulesAfterDisable, 'the disabled observer is disconnected');
+    await page.evaluate(() => { window.setTimeout = window.originalPostTimeout; });
+
     await page.setContent('<main></main>');
     await page.setViewportSize({ width: 390, height: 480 });
     const panelLayout = await page.evaluate(() => {
@@ -131,7 +194,7 @@ const fixtureSource = source.slice(0, initOffset) +
       'the full 50-account panel stays within a short mobile viewport');
     assert.equal(panelLayout.scrollable, true);
     assert.equal(panelLayout.overflowY, 'auto');
-    console.log('browser tests passed (nested text, clean links, permalink and route revalidation, nested/card ownership, toggle cleanup, mobile panel)');
+    console.log('browser tests passed (nested text, clean links, permalink and route revalidation, nested/card ownership, attribute hydration, visibility, filtered refreshes, toggle cleanup, mobile panel)');
   } finally {
     await browser.close();
   }

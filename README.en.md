@@ -8,6 +8,13 @@ If you find this script useful, please give it a star on [GitHub](https://github
 
 [繁體中文](README.md)
 
+## 1.3.3 changes
+
+- Recheck the signed-in account, target page, and platform restrictions while waiting for menus, confirmation dialogs, and action results. A changed page must not be counted as a successful action.
+- Pause after the current item still allows verification of an action already sent, but does not start another item. Unknown results are not retried automatically.
+- Recheck post tools when an existing post link or visibility changes. Toolbar-owned mutations do not trigger repeated refreshes.
+- Add batch-wait regression tests and release checks for the userscript header, version notes, and SHA-256 checksum.
+
 > [!WARNING]
 > This project is not affiliated with or authorized by Meta or Threads. Automated scanning and batch actions may violate platform terms and may lead to verification prompts, action limits, or account restrictions. The batch cap and delay are conservative design choices, not Meta-approved safety limits.
 
@@ -71,13 +78,15 @@ node --check threads-safe-batch-manager.user.js
 node --test tests/*.test.js
 ```
 
-The tests are offline. They do not sign in to Threads or modify account relationships.
+The tests are offline. They do not sign in to Threads or modify account relationships. After changing the script, update the version notes and `SHA256SUMS` before running the complete suite.
 
 For the post-copy and panel-layout browser suite, provide Playwright and its Chromium browser, then run `node tests/post-tools.browser.js`. Alternatively, set `PLAYWRIGHT_MODULE` to an existing Playwright package and `PLAYWRIGHT_CHROMIUM_EXECUTABLE` to a local Chromium-based browser. The suite uses a separate temporary browser and intercepts website requests with local fixtures; it does not connect to Threads.
 
 On 2026-08-24, the current Traditional Chinese Threads DOM and selectors were checked read-only in Edge. A complete live batch was not run against a user account. Other browser, userscript-manager, and interface-language combinations remain unverified.
 
 On 2026-10-11, the current Threads home feed post-container structure was inspected read-only. Copy-tool and scan-cancellation changes are additionally covered by local fixtures; this is not a live batch execution test.
+
+The 2026-10-23 batch-wait and dynamic post-tool changes are verified with offline tests and isolated browser fixtures. The complete live Threads workflow was not revalidated on that date.
 
 The `main` branch is the development source. Formal versions use a Git tag matching the userscript `@version`, such as `v1.1.0`. Use a tag rather than raw `main` when you need an immutable version.
 

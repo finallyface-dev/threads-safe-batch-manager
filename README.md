@@ -6,6 +6,13 @@
 
 [English](README.en.md)
 
+## 1.3.3 更新
+
+- 等待選單、確認視窗或動作結果時，持續核對登入帳號、目標頁面與平台限制；狀態變動時暫停，不把其他頁面的狀態算成成功。
+- 「本筆後暫停」仍會確認已送出的目前項目，但不開始下一筆；不明結果不會自動重試。
+- 貼文連結或顯示狀態動態更新時，重新檢查是否需要加入複製工具；工具列自己的變動不會反覆觸發更新。
+- 新增批次等待與發布檔案檢查，核對 userscript 標頭、版本說明及 SHA-256。
+
 > [!WARNING]
 > 本專案不是 Meta 或 Threads 官方工具，也沒有獲得 Meta 授權。自動掃描與批次操作可能違反平台條款，並可能造成操作限制、登入驗證或帳號限制。每批上限與等待時間只是保守設計，不代表 Meta 認可或保證帳號安全。
 
@@ -78,6 +85,7 @@
 - 介面文字：繁體中文、簡體中文及英文
 - 2026-08-24 已在 Edge 的 Threads 繁體中文介面做唯讀 DOM 與選擇器驗證。
 - 2026-10-11 已唯讀檢查 Threads 首頁貼文容器結構；本次貼文複製與取消掃描修正另以本機模擬頁面／測試驗證。
+- 2026-10-23 的批次等待與貼文動態更新修正以離線測試及隔離瀏覽器模擬頁面驗證；沒有重新驗證當日 Threads 的完整真實操作流程。
 - 完整的真實批次執行沒有在使用者帳號上測試，以免製造追蹤關係變更。
 - 其他瀏覽器、userscript manager 與介面語言組合尚未逐一驗證。
 
@@ -94,7 +102,7 @@ node --check threads-safe-batch-manager.user.js
 node --test tests/*.test.js
 ```
 
-基本測試涵蓋狀態驗證、暫存錯誤、名單勾選、掃描取消、網址與控制項辨識。測試不會登入 Threads，也不會變更任何帳號關係。
+基本測試涵蓋狀態驗證、暫存錯誤、名單勾選、掃描取消、批次等待中斷、網址與控制項辨識，以及發布檔案一致性。測試不會登入 Threads，也不會變更任何帳號關係。修改腳本後，請同步更新版本說明與 `SHA256SUMS`，再執行完整測試。
 
 貼文複製與面板排版另有瀏覽器測試。開發環境需提供 Playwright 與其 Chromium，再執行 `node tests/post-tools.browser.js`。也可用 `PLAYWRIGHT_MODULE` 指向既有 Playwright 套件，並以 `PLAYWRIGHT_CHROMIUM_EXECUTABLE` 指定本機 Chromium 系列瀏覽器。測試會使用獨立暫存瀏覽器，攔截所有網站請求並提供本機測試內容，不會連到 Threads。
 
@@ -104,6 +112,8 @@ node --test tests/*.test.js
 - `GreasyFork-發布說明.md`：Greasy Fork 描述、使用方式與披露內容。
 - `tests/userscript.test.js`：不連線的 Node.js 測試。
 - `tests/scan-preview.test.js`：掃描取消與預覽勾選回歸測試。
+- `tests/batch-waits.test.js`：批次等待、帳號變動與停止訊號回歸測試。
+- `tests/release.test.js`：userscript 標頭、發布版本與檢查值測試。
 - `tests/post-tools.browser.js`：貼文工具及小視窗面板的瀏覽器測試。
 - `SECURITY.md`：安全問題回報方式。
 - `CONTRIBUTING.md`：貢獻與安全邊界。
