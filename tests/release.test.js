@@ -50,3 +50,21 @@ test('Greasy Fork version and latest change notes match userscript metadata', ()
   assert.equal(description.match(/^- 版本：(\S+)$/m)?.[1], version);
   assert.equal(description.match(/^### (\d+\.\d+\.\d+)$/m)?.[1], version);
 });
+
+test('all bilingual release descriptions match the current version and batch defaults', () => {
+  const version = Object.fromEntries(metadata()).version;
+  const cap = Number(source.match(/maxBatchSize:\s*(\d+)/)?.[1]);
+  const defaultSize = Number(source.match(/defaultBatchSize:\s*(\d+)/)?.[1]);
+  assert.ok(Number.isInteger(cap) && Number.isInteger(defaultSize));
+  for (const filename of ['README.md', 'README.en.md', 'GreasyFork-發布說明.md', 'GreasyFork-description.en.md']) {
+    const description = fs.readFileSync(new URL(filename, root), 'utf8');
+    assert.equal(description.match(/^#{2,3} (\d+\.\d+\.\d+)(?:\s|$)/m)?.[1], version,
+      `${filename}: latest release notes must match the userscript`);
+    const batch = filename.includes('.en.')
+      ? description.match(/Up to (\d+) accounts per batch, with a default of (\d+)/)
+      : description.match(/每批最多 (\d+) 筆，預設 (\d+) 筆/);
+    assert.ok(batch, `${filename}: document the cap and default batch size together`);
+    assert.equal(Number(batch[1]), cap, `${filename}: batch cap must match the script`);
+    assert.equal(Number(batch[2]), defaultSize, `${filename}: default batch size must match the script`);
+  }
+});

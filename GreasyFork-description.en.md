@@ -4,6 +4,14 @@ Useful tools for Threads: preview and select accounts to remove followers or unf
 
 If you find this script useful, please give it a star on [GitHub](https://github.com/finallyface-dev/threads-safe-batch-manager).
 
+## 1.3.4 changes
+
+Profile loading now checks stop and pause requests, account and target-page changes, and platform restrictions. It can wait for the navigation identity to load, but cannot change relationships before verifying that identity.
+
+Post tools recheck permalinks that gain text or icons, including changes to existing text nodes. Hidden or transparent posts and link containers are excluded, and visibility is checked again when copying.
+
+This release adds offline profile-loading, dynamic-link, and visibility regressions, plus version and batch-setting checks across all four bilingual descriptions. No follower removal or unfollowing was tested on a real account. The 50-account cap, default of 10, 8–30 second delay, confirmations, pause, skip, and stop controls are unchanged.
+
 ## 1.3.3 changes
 
 Batch waits recheck account identity, the target page, and platform restrictions before accepting a result. Stop and safety-pause signals end the wait instead of being retried as loading errors. Unknown action results are still not retried.

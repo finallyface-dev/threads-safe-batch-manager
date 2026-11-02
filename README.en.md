@@ -8,6 +8,14 @@ If you find this script useful, please give it a star on [GitHub](https://github
 
 [繁體中文](README.md)
 
+## 1.3.4 changes
+
+- Check stop and pause requests, account and target-page changes, and Threads restrictions while a profile loads. The script can wait for the navigation identity to load, but cannot change relationships before verifying that identity.
+- Recheck post tools when a permalink gains text or an icon, or its text node changes.
+- Do not use posts or links inside hidden or transparent containers as a valid copy target. Recheck visibility when a copy button is clicked.
+- Add profile-loading, dynamic-link, and visibility regressions, plus checks that all four bilingual descriptions match the script version, batch cap, and default size.
+- Validation uses offline tests and isolated browser fixtures, not follower removal or unfollowing on a real account. The 50-account cap, default of 10, and 8–30 second delay are unchanged.
+
 ## 1.3.3 changes
 
 - Recheck the signed-in account, target page, and platform restrictions while waiting for menus, confirmation dialogs, and action results. A changed page must not be counted as a successful action.
@@ -95,6 +103,8 @@ On 2026-08-24, the current Traditional Chinese Threads DOM and selectors were ch
 On 2026-10-11, the current Threads home feed post-container structure was inspected read-only. Copy-tool and scan-cancellation changes are additionally covered by local fixtures; this is not a live batch execution test.
 
 The 2026-10-23 batch-wait and dynamic post-tool changes are verified with offline tests and isolated browser fixtures. The complete live Threads workflow was not revalidated on that date.
+
+The 2026-11-03 profile-loading, dynamic-link, and visibility changes are verified with offline tests and isolated browser fixtures. The complete live Threads workflow was not revalidated on that date.
 
 The `main` branch is the development source. Formal versions use a Git tag matching the userscript `@version`, such as `v1.1.0`. Use a tag rather than raw `main` when you need an immutable version.
 

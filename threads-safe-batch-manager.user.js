@@ -3,7 +3,7 @@
 // @name:zh-TW   Threads 工具箱｜粉絲管理・文字複製・乾淨連結
 // @name:en      Threads Toolkit — Follower Manager, Copy Text & Clean Links
 // @namespace    urn:userscript:threads-safe-batch-manager
-// @version      1.3.3
+// @version      1.3.4
 // @description  在 Threads 加入實用工具：預覽並勾選帳號後批次移除粉絲或取消追蹤，也能複製貼文文字與乾淨連結。提供操作確認、暫停、停止及等待時間估算。
 // @description:zh-TW 在 Threads 加入實用工具：預覽並勾選帳號後批次移除粉絲或取消追蹤，也能複製貼文文字與乾淨連結。提供操作確認、暫停、停止及等待時間估算。
 // @description:en Useful tools for Threads: preview and select accounts to remove followers or unfollow in batches, copy post text, and copy clean links. Includes confirmation, pause, stop, and waiting-time estimates.
@@ -1533,7 +1533,7 @@
     return matched ? 'Threads 顯示錯誤、驗證或操作限制。腳本已暫停，不會嘗試繞過。' : null;
   }
 
-  function assertRunMayContinue(token, allowPause = false) {
+  function assertRunContext(token, allowPause = false, allowPendingOwner = false) {
     if (runtime.stopped) {
       throw new StopRequestedError();
     }
@@ -1544,11 +1544,11 @@
     }
 
     const ownHandle = getOwnHandle();
-    if (!ownHandle) {
+    if (!ownHandle && !allowPendingOwner) {
       throw new SafetyPauseError('無法確認登入狀態，已暫停。');
     }
 
-    if (ownHandle.toLowerCase() !== state.originHandle.toLowerCase()) {
+    if (ownHandle && ownHandle.toLowerCase() !== state.originHandle.toLowerCase()) {
       throw new SafetyPauseError('目前登入帳號已與本批預覽帳號不同，腳本已暫停。');
     }
 
@@ -1568,6 +1568,32 @@
     }
 
     return state;
+  }
+
+  function assertRunMayContinue(token, allowPause = false) {
+    return assertRunContext(token, allowPause);
+  }
+
+  async function waitForProfileRegion(token, timeoutMs = CONFIG.elementWaitMs) {
+    const profileRegion = await waitFor(() => {
+      // Navigation can render the profile before the signed-in account link.
+      // Only this initial wait tolerates a missing owner; actions remain strict.
+      assertRunContext(token, false, true);
+      const candidate = getProfileRegion();
+      const ownHandle = getOwnHandle();
+      assertRunContext(token, false, true);
+      if (!candidate || !ownHandle) {
+        return null;
+      }
+      assertRunMayContinue(token);
+      return candidate;
+    }, timeoutMs);
+    // A stop or restriction on the final polling interval still ends the wait.
+    assertRunContext(token, false, true);
+    if (profileRegion) {
+      assertRunMayContinue(token);
+    }
+    return profileRegion;
   }
 
   function markActionClicked(token) {
@@ -1667,7 +1693,7 @@
   }
 
   async function removeFollowerOnCurrentProfile(state) {
-    const profileRegion = await waitFor(getProfileRegion);
+    const profileRegion = await waitForProfileRegion(state.token);
     if (!profileRegion) {
       throw new SafetyPauseError('個人檔案尚未載入。');
     }
@@ -1764,7 +1790,7 @@
   }
 
   async function unfollowCurrentProfile(state) {
-    let profileRegion = await waitFor(getProfileRegion);
+    let profileRegion = await waitForProfileRegion(state.token);
     if (!profileRegion) {
       throw new SafetyPauseError('個人檔案尚未載入。');
     }
@@ -1881,7 +1907,9 @@
         return false;
       }
 
-      assertRunMayContinue(token, true);
+      // The destination can still be loading its signed-in account link.
+      // The profile wait verifies identity before any control can be clicked.
+      assertRunContext(token, true, true);
       const remainingSeconds = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
       updateStatus(`仍需等待 ${remainingSeconds} 秒，才會開始下一筆。`);
       await sleep(Math.min(500, Math.max(1, deadline - Date.now())));
@@ -1943,7 +1971,9 @@
       throw new SafetyPauseError('目標意外指向目前登入帳號，已暫停。');
     }
 
-    assertRunMayContinue(state.token);
+    // Both modes begin with a guarded profile wait and require a known owner
+    // before returning from that wait or clicking any page control.
+    assertRunContext(state.token, false, true);
     if (state.mode === MODE.REMOVE_FOLLOWERS) {
       return removeFollowerOnCurrentProfile(state);
     }
@@ -2358,9 +2388,25 @@
 
   const POST_CONTAINER_SELECTOR = 'article, [role="article"], [data-pressable-container="true"]';
 
+  function isPostElementVisible(element) {
+    if (!isVisible(element)) {
+      return false;
+    }
+    // A permalink can retain its own box while an ancestor hides the entire post.
+    // Keep this stricter check local to the optional post tools.
+    for (let parent = element; parent; parent = parent.parentElement) {
+      const style = window.getComputedStyle(parent);
+      if (parent.hidden || parent.getAttribute('aria-hidden') === 'true' || style.display === 'none' ||
+        ['hidden', 'collapse'].includes(style.visibility) || Number(style.opacity) === 0) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   function currentPostUrl(article) {
-    const urls = new Set(visibleElements(article, 'a[href]')
-      .filter((link) => link.closest(POST_CONTAINER_SELECTOR) === article)
+    const urls = new Set([...article.querySelectorAll('a[href]')]
+      .filter((link) => link.closest(POST_CONTAINER_SELECTOR) === article && isPostElementVisible(link))
       .map((link) => cleanPostUrl(link.getAttribute('href'))).filter(Boolean));
     return urls.size === 1 ? [...urls][0] : null;
   }
@@ -2373,14 +2419,7 @@
         if (node.closest(articleSelector) !== article || node.closest(`a, ${excludedSelector}`)) {
           return false;
         }
-        for (let parent = node; parent; parent = parent.parentElement) {
-          const style = window.getComputedStyle(parent);
-          if (parent.hidden || parent.getAttribute('aria-hidden') === 'true' || style.display === 'none' ||
-            ['hidden', 'collapse'].includes(style.visibility) || Number(style.opacity) === 0) {
-            return false;
-          }
-        }
-        return true;
+        return isPostElementVisible(node);
       });
     const candidateSet = new Set(candidates);
     const roots = candidates.filter((node) => {
@@ -2425,16 +2464,21 @@
     let observer = null;
     let timer = null;
     const isPostMutation = (record) => {
-      const target = record.target;
+      const target = record.target instanceof Element ? record.target : record.target.parentElement;
       if (!(target instanceof Element) || target.closest(toolbarSelector)) {
         return false;
       }
       const containsPost = (node) => node.matches(POST_CONTAINER_SELECTOR) ||
         Boolean(node.querySelector(POST_CONTAINER_SELECTOR));
       const containsLink = (node) => node.matches('a[href]') || Boolean(node.querySelector('a[href]'));
+      const insidePost = Boolean(target.closest(POST_CONTAINER_SELECTOR));
+      const insideLink = Boolean(target.closest('a[href]'));
+      if (record.type === 'characterData') {
+        return insidePost && insideLink;
+      }
       if (record.type === 'attributes') {
         if (record.attributeName === 'href') {
-          return target.matches('a') && Boolean(target.closest(POST_CONTAINER_SELECTOR));
+          return target.matches('a') && insidePost;
         }
         if (record.attributeName === 'data-pressable-container') {
           return target.matches(POST_CONTAINER_SELECTOR) || record.oldValue === 'true';
@@ -2443,14 +2487,19 @@
           const roles = [record.oldValue, target.getAttribute('role')];
           return roles.includes('article') || (roles.includes('dialog') && containsPost(target));
         }
-        // Visibility can change on a post, its permalink, or an ancestor of either.
+        // Visibility can change on a post, its permalink, or a link's rendered child.
         // Ignore unrelated attributes, including styles on ordinary post text.
         return containsPost(target) ||
-          (Boolean(target.closest(POST_CONTAINER_SELECTOR)) && containsLink(target));
+          (insidePost && (containsLink(target) || insideLink));
+      }
+      // Empty links can acquire visible text or an icon without changing their href.
+      if (insidePost && insideLink) {
+        return [...record.addedNodes, ...record.removedNodes].some((node) =>
+          node.nodeType === 3 || (node instanceof Element && !node.matches(toolbarSelector)));
       }
       return [...record.addedNodes, ...record.removedNodes].some((node) =>
         node instanceof Element && !node.matches(toolbarSelector) &&
-        (containsPost(node) || (Boolean(target.closest(POST_CONTAINER_SELECTOR)) && containsLink(node))));
+        (containsPost(node) || (insidePost && containsLink(node))));
     };
     const refresh = () => {
       timer = null;
@@ -2460,7 +2509,7 @@
       }
       document.querySelectorAll(toolbarSelector).forEach((toolbar) => {
         const article = toolbar.parentElement;
-        if (!article?.matches(POST_CONTAINER_SELECTOR) || !isVisible(article) ||
+        if (!article?.matches(POST_CONTAINER_SELECTOR) || !isPostElementVisible(article) ||
           article.closest('[role="dialog"]') || !currentPostUrl(article)) {
           toolbar.remove();
         }
@@ -2468,7 +2517,7 @@
       for (const article of visibleElements(document, POST_CONTAINER_SELECTOR)) {
         const hasOwnToolbar = [...article.querySelectorAll(toolbarSelector)]
           .some((toolbar) => toolbar.closest(POST_CONTAINER_SELECTOR) === article);
-        if (hasOwnToolbar || article.closest('[role="dialog"]')) {
+        if (hasOwnToolbar || !isPostElementVisible(article) || article.closest('[role="dialog"]')) {
           continue;
         }
         if (!currentPostUrl(article)) {
@@ -2487,7 +2536,7 @@
             event.preventDefault();
             event.stopPropagation();
             try {
-              if (!toggle.checked || !isVisible(article) || article.closest('[role="dialog"]') ||
+              if (!toggle.checked || !isPostElementVisible(article) || article.closest('[role="dialog"]') ||
                 /\/(?:login|settings|direct|messages|accounts)(?:\/|$)/i.test(window.location.pathname)) {
                 throw new Error('目前頁面無法使用貼文工具。');
               }
@@ -2534,6 +2583,7 @@
         observer.observe(document.body, {
           childList: true,
           subtree: true,
+          characterData: true,
           attributes: true,
           attributeOldValue: true,
           attributeFilter: ['href', 'hidden', 'aria-hidden', 'class', 'style', 'role', 'data-pressable-container']

@@ -59,7 +59,7 @@ function createFixture() {
     };
     sleep = (milliseconds) => fixture.sleep(milliseconds);
     globalThis.api = {
-      runtime, waitFor, waitForRun, saveState, readState, unfollowCurrentProfile, openProfileMenu,
+      runtime, waitFor, waitForRun, waitForProfileRegion, saveState, readState, unfollowCurrentProfile, openProfileMenu,
       removeFollowerOnCurrentProfile,
       resumeHandoff, StopRequestedError, PauseRequestedError, SafetyPauseError,
       replaceProcessor(processor) { processCurrentTarget = processor; }
@@ -121,6 +121,188 @@ function createRemovalFixture() {
     }
   };
   return result;
+}
+
+for (const mode of ['removeFollowers', 'unfollow']) {
+  const method = mode === 'removeFollowers'
+    ? 'removeFollowerOnCurrentProfile'
+    : 'unfollowCurrentProfile';
+
+  for (const interruption of ['restriction', 'stop', 'pause', 'batch change', 'account change', 'target change']) {
+    test(`${mode} profile loading stops on ${interruption} before another lookup or click`, async () => {
+      const { api, fixture, state, location } = mode === 'removeFollowers'
+        ? createRemovalFixture()
+        : createFixture();
+      let regionReads = 0;
+      fixture.getRegion = () => ++regionReads < 3 ? null : {};
+      if (mode === 'unfollow') {
+        fixture.getRelation = () => ({
+          element: {}, state: fixture.clicks.length ? 'notFollowing' : 'following'
+        });
+      }
+      const originalOnSleep = fixture.onSleep;
+      fixture.transientSafety = true;
+      fixture.onSleep = (milliseconds) => {
+        originalOnSleep(milliseconds);
+        if (milliseconds !== 200) return;
+        if (interruption === 'restriction') {
+          // The warning disappears at the next tick; missing it must not allow the action.
+          fixture.safetyMessage = regionReads === 1 ? 'Threads restriction during profile load' : null;
+        } else if (regionReads === 1) {
+          if (interruption === 'stop') api.runtime.stopped = true;
+          if (interruption === 'pause') api.saveState({ ...api.readState(), pauseRequested: true });
+          if (interruption === 'batch change') api.saveState({ ...api.readState(), token: 'newbatch-5678' });
+          if (interruption === 'account change') fixture.owner = 'another.owner';
+          if (interruption === 'target change') location.pathname = '/@bob';
+        }
+      };
+      const errorType = ['stop', 'batch change'].includes(interruption) ? api.StopRequestedError
+        : interruption === 'pause' ? api.PauseRequestedError
+          : api.SafetyPauseError;
+
+      await assert.rejects(api[method](state), errorType);
+      assert.equal(regionReads, 1, 'interruptions must be checked before the next profile lookup');
+      assert.equal(fixture.clicks.length, 0, 'no page control may be clicked after interruption');
+      assert.equal(api.readState().phase, 'beforeAction');
+    });
+  }
+
+  test(`${mode} waits for the signed-in account before processing a ready profile`, async () => {
+    const { api, fixture, state } = mode === 'removeFollowers'
+      ? createRemovalFixture()
+      : createFixture();
+    fixture.owner = null;
+    const originalOnSleep = fixture.onSleep;
+    fixture.onSleep = (milliseconds) => {
+      originalOnSleep(milliseconds);
+      if (milliseconds === 200) fixture.owner = 'owner';
+    };
+    const originalOnClick = fixture.onClick;
+    fixture.onClick = (element) => {
+      assert.equal(fixture.owner, 'owner', 'a missing signed-in account must never permit a click');
+      originalOnClick(element);
+    };
+    if (mode === 'unfollow') {
+      fixture.getRelation = () => ({
+        element: {}, state: fixture.clicks.length ? 'notFollowing' : 'following'
+      });
+    }
+
+    const result = await api[method](state);
+    assert.equal(result.status, 'completed');
+    assert.ok(fixture.clicks.length > 0);
+  });
+
+  test(`${mode} never acts if the signed-in account remains unavailable`, async () => {
+    const { api, fixture, state } = mode === 'removeFollowers'
+      ? createRemovalFixture()
+      : createFixture();
+    fixture.owner = null;
+    await assert.rejects(api[method](state), api.SafetyPauseError);
+    assert.equal(fixture.clicks.length, 0);
+    assert.equal(api.readState().phase, 'beforeAction');
+  });
+}
+
+for (const interruption of ['restriction', 'stop', 'pause']) {
+  test(`profile loading checks ${interruption} at the timeout boundary`, async () => {
+    const { api, fixture, state } = createFixture();
+    fixture.getRegion = () => null;
+    fixture.onSleep = () => {
+      if (interruption === 'restriction') fixture.safetyMessage = 'Threads restriction';
+      if (interruption === 'stop') api.runtime.stopped = true;
+      if (interruption === 'pause') api.saveState({ ...api.readState(), pauseRequested: true });
+    };
+    const errorType = interruption === 'stop' ? api.StopRequestedError
+      : interruption === 'pause' ? api.PauseRequestedError
+        : api.SafetyPauseError;
+    await assert.rejects(api.waitForProfileRegion(state.token, 50), errorType);
+    assert.equal(fixture.clicks.length, 0);
+  });
+}
+
+for (const mode of ['removeFollowers', 'unfollow']) {
+  test(`${mode} handoff waits for a missing account with or without a remaining interval`, async () => {
+    for (const remainingInterval of [0, 1000]) {
+      const { api, fixture, state } = mode === 'removeFollowers'
+        ? createRemovalFixture()
+        : createFixture();
+      api.saveState({
+        ...state, status: 'handoff', queue: ['alice'], total: 1,
+        nextActionNotBefore: 1000 + remainingInterval
+      });
+      fixture.owner = null;
+      const originalOnSleep = fixture.onSleep;
+      fixture.onSleep = (milliseconds) => {
+        originalOnSleep(milliseconds);
+        // The account remains unavailable throughout any initial countdown.
+        if (milliseconds === 200) fixture.owner = 'owner';
+      };
+      const originalOnClick = fixture.onClick;
+      fixture.onClick = (element) => {
+        assert.equal(fixture.owner, 'owner');
+        originalOnClick(element);
+      };
+      if (mode === 'unfollow') {
+        fixture.getRelation = () => ({
+          element: {}, state: fixture.clicks.length ? 'notFollowing' : 'following'
+        });
+      }
+
+      await api.resumeHandoff();
+      assert.equal(api.readState().status, 'complete', `remaining interval: ${remainingInterval}`);
+      assert.equal(api.readState().completedCount, 1);
+      assert.ok(fixture.clicks.length > 0);
+    }
+  });
+
+  test(`${mode} handoff never clicks while the account remains unavailable`, async () => {
+    for (const remainingInterval of [0, 1000]) {
+      const { api, fixture, state } = mode === 'removeFollowers'
+        ? createRemovalFixture()
+        : createFixture();
+      api.saveState({
+        ...state, status: 'handoff', queue: ['alice'], total: 1,
+        nextActionNotBefore: 1000 + remainingInterval
+      });
+      fixture.owner = null;
+
+      await api.resumeHandoff();
+      assert.equal(api.readState().status, 'paused');
+      assert.equal(api.readState().phase, 'beforeAction');
+      assert.equal(api.readState().completedCount, 0);
+      assert.equal(fixture.clicks.length, 0);
+    }
+  });
+
+  for (const interruption of ['account change', 'target change', 'restriction']) {
+    test(`${mode} handoff rejects ${interruption} while waiting for account identity`, async () => {
+      for (const remainingInterval of [0, 1000]) {
+        const { api, fixture, state, location } = mode === 'removeFollowers'
+          ? createRemovalFixture()
+          : createFixture();
+        api.saveState({
+          ...state, status: 'handoff', queue: ['alice'], total: 1,
+          nextActionNotBefore: 1000 + remainingInterval
+        });
+        fixture.owner = null;
+        let interrupted = false;
+        fixture.onSleep = () => {
+          interrupted = true;
+          if (interruption === 'account change') fixture.owner = 'another.owner';
+          if (interruption === 'target change') location.pathname = '/@bob';
+          if (interruption === 'restriction') fixture.safetyMessage = 'Threads restriction';
+        };
+
+        await api.resumeHandoff();
+        assert.ok(interrupted, 'the handoff must reach its guarded wait');
+        assert.equal(api.readState().status, 'paused');
+        assert.equal(api.readState().phase, 'beforeAction');
+        assert.equal(api.readState().completedCount, 0);
+        assert.equal(fixture.clicks.length, 0);
+      }
+    });
+  }
 }
 
 for (const name of ['StopRequestedError', 'PauseRequestedError', 'SafetyPauseError']) {

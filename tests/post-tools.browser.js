@@ -142,7 +142,9 @@ const fixtureSource = source.slice(0, initOffset) +
     await page.evaluate(() => {
       document.querySelector('#unrelated').style.color = 'red';
       document.querySelector('#post-text').className = 'ordinary-text';
+      document.querySelector('#post-text').firstChild.data = 'Updated ordinary post text';
       document.querySelector('[data-tsbm-post-tools] [role="status"]').textContent = 'Own status update';
+      document.querySelector('[data-tsbm-post-tools] [role="status"]').firstChild.data = 'Own character update';
     });
     await page.waitForTimeout(400);
     assert.equal(await page.evaluate(() => window.postRefreshSchedules), 1, 'unrelated attributes, ordinary text styles and toolbar changes are ignored');
@@ -177,6 +179,71 @@ const fixtureSource = source.slice(0, initOffset) +
     assert.equal(await page.evaluate(() => window.postRefreshSchedules), schedulesAfterDisable, 'the disabled observer is disconnected');
     await page.evaluate(() => { window.setTimeout = window.originalPostTimeout; });
 
+    await page.setContent(`
+      <input id="toggle" type="checkbox">
+      <article id="text-card"><a id="text-link" href="/@alice/post/TEXT"></a><div dir="auto">Text post</div></article>
+      <article id="character-card"><a id="character-link" href="/@alice/post/CHARACTER"></a><div dir="auto">Character post</div></article>
+      <article id="icon-card"><a id="icon-link" href="/@alice/post/ICON"></a><div dir="auto">Icon post</div></article>
+      <article id="child-card"><a href="/@alice/post/CHILD"><span id="link-child" style="display:none">Time</span></a><div dir="auto">Child post</div></article>`);
+    await page.evaluate(() => {
+      document.querySelector('#character-link').append(document.createTextNode(''));
+      __postToolsTest.setupPostTools(document.querySelector('#toggle'));
+    });
+    await page.check('#toggle');
+    assert.equal(await page.locator('[data-tsbm-post-tools]').count(), 0, 'empty permalinks do not identify a visible post');
+    await page.evaluate(() => {
+      document.querySelector('#text-link').textContent = 'Time';
+      document.querySelector('#character-link').firstChild.data = 'Time';
+      const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      icon.setAttribute('width', '18');
+      icon.setAttribute('height', '18');
+      document.querySelector('#icon-link').append(icon);
+      document.querySelector('#link-child').style.display = 'inline';
+    });
+    await page.waitForFunction(() => document.querySelectorAll('[data-tsbm-post-tools]').length === 4, null, { timeout: 2000 });
+    for (const id of ['text-card', 'character-card', 'icon-card', 'child-card']) {
+      assert.equal(await page.locator(`#${id} > [data-tsbm-post-tools]`).count(), 1,
+        'text, character data, icon insertion and descendant visibility can hydrate a permalink');
+    }
+    await page.evaluate(() => {
+      document.querySelector('#text-link').textContent = '';
+      document.querySelector('#character-link').firstChild.data = '';
+      document.querySelector('#icon-link svg').remove();
+      document.querySelector('#link-child').style.display = 'none';
+    });
+    await page.waitForFunction(() => !document.querySelector('[data-tsbm-post-tools]'));
+    await page.uncheck('#toggle');
+
+    await page.setContent(`
+      <style>[hidden] { display: block !important; }</style>
+      <input id="toggle" type="checkbox">
+      <section id="post-visibility"><article id="visibility-card">
+        <div id="link-visibility"><a href="/@alice/post/VISIBILITY">Time</a></div>
+        <div dir="auto">Visible post text</div>
+      </article></section>`);
+    await page.evaluate(() => __postToolsTest.setupPostTools(document.querySelector('#toggle')));
+    await page.check('#toggle');
+    assert.equal(await page.locator('[data-tsbm-post-tools]').count(), 1);
+    for (const id of ['link-visibility', 'post-visibility']) {
+      for (const [attribute, value] of [['style', 'opacity:0'], ['hidden', ''], ['style', 'visibility:collapse']]) {
+        const statuses = await page.evaluate(({ id, attribute, value }) => {
+          document.getElementById(id).setAttribute(attribute, value);
+          return [...document.querySelectorAll('[data-tsbm-post-tools] button')].map((button) => {
+            button.click();
+            return document.querySelector('[data-tsbm-post-tools] [role="status"]').textContent;
+          });
+        }, { id, attribute, value });
+        assert.deepEqual(statuses, Array(2).fill(id === 'link-visibility' ? '無法唯一確認貼文連結。' : '目前頁面無法使用貼文工具。'),
+          'both copy actions recheck hidden ancestors before the observer refreshes');
+        assert.equal(await page.evaluate(() => window.copiedPostValues.length), 2, 'hidden permalinks and posts never reach the clipboard');
+        assert.equal(await page.evaluate(() => __postToolsTest.currentPostUrl(document.querySelector('#visibility-card'))), null);
+        await page.waitForFunction(() => !document.querySelector('[data-tsbm-post-tools]'));
+        await page.evaluate(({ id, attribute }) => document.getElementById(id).removeAttribute(attribute), { id, attribute });
+        await page.waitForFunction(() => document.querySelector('[data-tsbm-post-tools]'));
+      }
+    }
+    await page.uncheck('#toggle');
+
     await page.setContent('<main></main>');
     await page.setViewportSize({ width: 390, height: 480 });
     const panelLayout = await page.evaluate(() => {
@@ -194,7 +261,7 @@ const fixtureSource = source.slice(0, initOffset) +
       'the full 50-account panel stays within a short mobile viewport');
     assert.equal(panelLayout.scrollable, true);
     assert.equal(panelLayout.overflowY, 'auto');
-    console.log('browser tests passed (nested text, clean links, permalink and route revalidation, nested/card ownership, attribute hydration, visibility, filtered refreshes, toggle cleanup, mobile panel)');
+    console.log('browser tests passed (nested text, clean links, permalink and route revalidation, nested/card ownership, text/icon/attribute hydration, hidden ancestors, filtered refreshes, toggle cleanup, mobile panel)');
   } finally {
     await browser.close();
   }
