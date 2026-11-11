@@ -3,7 +3,7 @@
 // @name:zh-TW   Threads 工具箱｜粉絲管理・文字複製・乾淨連結
 // @name:en      Threads Toolkit — Follower Manager, Copy Text & Clean Links
 // @namespace    urn:userscript:threads-safe-batch-manager
-// @version      1.3.4
+// @version      1.3.5
 // @description  在 Threads 加入實用工具：預覽並勾選帳號後批次移除粉絲或取消追蹤，也能複製貼文文字與乾淨連結。提供操作確認、暫停、停止及等待時間估算。
 // @description:zh-TW 在 Threads 加入實用工具：預覽並勾選帳號後批次移除粉絲或取消追蹤，也能複製貼文文字與乾淨連結。提供操作確認、暫停、停止及等待時間估算。
 // @description:en Useful tools for Threads: preview and select accounts to remove followers or unfollow in batches, copy post text, and copy clean links. Includes confirmation, pause, stop, and waiting-time estimates.
@@ -171,6 +171,7 @@
     preview: [],
     previewMode: null,
     previewOwnHandle: null,
+    previewDialog: null,
     processing: false,
     scanning: false,
     scanCancelled: false,
@@ -992,14 +993,19 @@
     syncUiFromState();
   }
 
+  function clearPreview() {
+    runtime.preview = [];
+    runtime.previewMode = null;
+    runtime.previewOwnHandle = null;
+    runtime.previewDialog = null;
+    showPreview([]);
+  }
+
   function invalidatePreview() {
     if (runtime.scanning || readState()) {
       return;
     }
-    runtime.preview = [];
-    runtime.previewMode = null;
-    runtime.previewOwnHandle = null;
-    showPreview([]);
+    clearPreview();
     syncUiFromState();
   }
 
@@ -1054,6 +1060,16 @@
     return null;
   }
 
+  function listMatchesScan(dialog, mode) {
+    return Boolean(dialog && relationDialog() === dialog && selectedRelationMode(dialog) === mode);
+  }
+
+  function assertScanList(dialog, mode) {
+    if (!listMatchesScan(dialog, mode)) {
+      throw new SafetyPauseError('掃描的名單視窗已關閉、更換或切換分頁。請關閉名單後重新掃描。');
+    }
+  }
+
   async function ensureRelationDialog(mode) {
     assertScanNotCancelled();
     if (relationDialogs().length > 0) {
@@ -1079,7 +1095,7 @@
     const beforeDialogs = new Set(visibleElements(document, '[role="dialog"]'));
     assertScanNotCancelled();
     clickVisibleElement(followerCountButton);
-    let dialog = await waitForScan(() => {
+    const dialog = await waitForScan(() => {
       const candidate = relationDialog();
       return candidate && !beforeDialogs.has(candidate) ? candidate : null;
     });
@@ -1105,17 +1121,18 @@
 
       const selected = await waitForScan(() => {
         const currentDialog = relationDialog();
-        return currentDialog && selectedRelationMode(currentDialog) === mode ? currentDialog : null;
+        if (!dialog.isConnected || (currentDialog && currentDialog !== dialog)) {
+          throw new SafetyPauseError('切換分頁時名單視窗已更換。請關閉名單後重新掃描。');
+        }
+        return currentDialog === dialog && selectedRelationMode(dialog) === mode;
       });
 
       if (!selected) {
         throw new SafetyPauseError('無法切換到指定名單。');
       }
-      dialog = selected;
       await sleepDuringScan(CONFIG.scanStepDelayMs);
-      dialog = relationDialog();
-      if (!dialog || selectedRelationMode(dialog) !== mode ||
-        !underlyingOwnProfileMatches(expectedOwnHandle)) {
+      assertScanList(dialog, mode);
+      if (!underlyingOwnProfileMatches(expectedOwnHandle)) {
         throw new SafetyPauseError('切換名單後無法確認目前分頁。');
       }
     }
@@ -1204,14 +1221,14 @@
       throw new SafetyPauseError('無法確認目前登入帳號。請登入 Threads 後重試。');
     }
 
-    let dialog = await ensureRelationDialog(mode);
+    const dialog = await ensureRelationDialog(mode);
     const handles = new Set();
     let stableRounds = 0;
     let previousCount = 0;
 
     const firstProfileLink = await waitForScan(() => {
-      dialog = relationDialog();
-      return dialog && dialog.querySelector('a[href^="/@"]');
+      assertScanList(dialog, mode);
+      return dialog.querySelector('a[href^="/@"]');
     });
 
     if (!firstProfileLink) {
@@ -1237,17 +1254,14 @@
           throw new SafetyPauseError('掃描期間登入帳號或個人檔案已變更，已停止掃描。');
         }
 
-        dialog = relationDialog();
-        if (!dialog || selectedRelationMode(dialog) !== mode) {
-          throw new SafetyPauseError('掃描期間名單已關閉或切換，已停止掃描。');
-        }
+        assertScanList(dialog, mode);
 
         collectHandles(dialog, ownHandle, handles, mode, limit);
         const previewHandles = [...handles].slice(0, limit);
         updateStatus(`正在掃描：已找到 ${previewHandles.length}/${limit} 筆。`);
 
         if (previewHandles.length >= limit) {
-          return { handles: previewHandles, ownHandle };
+          return { handles: previewHandles, ownHandle, dialog };
         }
 
         if (handles.size === previousCount) {
@@ -1257,7 +1271,7 @@
           previousCount = handles.size;
         }
 
-        scrollContainer = findScrollContainer(dialog) || scrollContainer;
+        scrollContainer = findScrollContainer(dialog);
         if (!scrollContainer) {
           break;
         }
@@ -1276,14 +1290,14 @@
       }
 
       assertScanNotCancelled();
-      return { handles: [...handles].slice(0, limit), ownHandle };
+      assertScanList(dialog, mode);
+      return { handles: [...handles].slice(0, limit), ownHandle, dialog };
     } finally {
-      const currentDialog = relationDialog();
-      const restoreContainer = originalScrollContainer && originalScrollContainer.isConnected
-        ? originalScrollContainer
-        : (currentDialog ? findScrollContainer(currentDialog) : null);
-      if (restoreContainer && originalScrollTop !== null) {
-        restoreContainer.scrollTop = Math.min(originalScrollTop, restoreContainer.scrollHeight);
+      if (originalScrollTop !== null && listMatchesScan(dialog, mode)) {
+        const container = dialog.contains(originalScrollContainer) ? originalScrollContainer : findScrollContainer(dialog);
+        if (container) {
+          container.scrollTop = Math.min(originalScrollTop, container.scrollHeight);
+        }
       }
     }
   }
@@ -1311,15 +1325,12 @@
     runtime.ui.limit.value = String(limit);
     runtime.scanning = true;
     runtime.scanCancelled = false;
-    runtime.preview = [];
-    runtime.previewMode = null;
-    runtime.previewOwnHandle = null;
+    clearPreview();
     runtime.ui.scanButton.textContent = '停止掃描';
     runtime.ui.startButton.disabled = true;
     runtime.ui.mode.disabled = true;
     runtime.ui.limit.disabled = true;
     runtime.ui.delay.disabled = true;
-    showPreview([]);
     updateStatus('正在開啟並掃描名單。此階段不會移除任何帳號。');
 
     try {
@@ -1333,6 +1344,7 @@
       runtime.preview = handles;
       runtime.previewMode = mode;
       runtime.previewOwnHandle = previewResult.ownHandle;
+      runtime.previewDialog = previewResult.dialog;
       showPreview(handles);
       const largeBatch = handles.length > CONFIG.largeBatchWarningThreshold;
       updateStatus(
@@ -1428,37 +1440,31 @@
     window.location.assign(buildProfileUrl(target));
   }
 
-  async function onStartClick() {
-    if (!runtime.preview.length || !runtime.previewOwnHandle || readState()) {
-      return;
-    }
-
-    const mode = runtime.ui.mode.value;
-    if (mode !== runtime.previewMode) {
+  function validatePreviewContext() {
+    if (runtime.ui.mode.value !== runtime.previewMode) {
       invalidatePreview();
       updateStatus('操作模式已變更，請重新掃描。', 'warning');
-      return;
+      return false;
     }
-
     if (!underlyingOwnProfileMatches(runtime.previewOwnHandle)) {
-      updateStatus('開始前請回到目前登入帳號的個人檔案頁。', 'warning');
-      return;
-    }
-
-    const currentOwnHandle = getOwnHandle();
-    if (!currentOwnHandle || currentOwnHandle.toLowerCase() !== runtime.previewOwnHandle.toLowerCase()) {
       invalidatePreview();
-      updateStatus('登入帳號已與預覽不同。請用目前帳號重新掃描。', 'warning');
-      return;
+      updateStatus('無法確認預覽時的登入帳號或個人檔案。請回到自己的個人檔案後重新掃描。', 'warning');
+      return false;
     }
-
-    const previewDialog = relationDialog();
-    if (!previewDialog || selectedRelationMode(previewDialog) !== mode) {
+    if (!listMatchesScan(runtime.previewDialog, runtime.previewMode)) {
       invalidatePreview();
-      updateStatus('名單已關閉或切換分頁。為避免操作錯誤名單，請重新掃描。', 'warning');
+      updateStatus('預覽時的名單已關閉、更換或切換分頁。請關閉名單後重新掃描。', 'warning');
+      return false;
+    }
+    return true;
+  }
+
+  async function onStartClick() {
+    if (!runtime.preview.length || readState() || !validatePreviewContext()) {
       return;
     }
-
+    const mode = runtime.previewMode;
+    const queue = runtime.preview.slice(0, CONFIG.maxBatchSize);
     const delaySeconds = clampInteger(
       runtime.ui.delay.value,
       CONFIG.minDelayMs / 1000,
@@ -1467,28 +1473,30 @@
     );
     runtime.ui.delay.value = String(delaySeconds);
 
-    if (!confirmBatch(mode, runtime.preview.length)) {
+    if (!confirmBatch(mode, queue.length)) {
       updateStatus('已取消。沒有執行任何變更。', 'warning');
       return;
     }
 
-    const ownHandle = getOwnHandle();
+    if (readState() || !validatePreviewContext()) {
+      return;
+    }
     const state = {
       version: CONFIG.stateVersion,
       token: makeRunToken(),
       mode,
       status: 'paused',
       phase: 'beforeAction',
-      queue: runtime.preview.slice(0, CONFIG.maxBatchSize),
-      total: runtime.preview.length,
+      queue,
+      total: queue.length,
       index: 0,
       completedCount: 0,
       skippedCount: 0,
       failedCount: 0,
       delayMs: delaySeconds * 1000,
-      originHandle: ownHandle,
+      originHandle: runtime.previewOwnHandle,
       originUrl: window.location.href.split('#')[0],
-      expectedHandle: runtime.preview[0],
+      expectedHandle: queue[0],
       handoffUntil: 0,
       confirmedAt: Date.now(),
       nextActionNotBefore: 0,
@@ -1504,10 +1512,7 @@
       updateStatus(error.message || '無法建立批次暫存，因此沒有開始。', 'danger');
       return;
     }
-    runtime.preview = [];
-    runtime.previewMode = null;
-    runtime.previewOwnHandle = null;
-    showPreview([]);
+    clearPreview();
     navigateToCurrentTarget(state);
   }
 
@@ -2251,9 +2256,7 @@
     }
 
     runtime.stopped = true;
-    runtime.preview = [];
-    runtime.previewMode = null;
-    runtime.previewOwnHandle = null;
+    clearPreview();
 
     let parkedSafely = false;
     if (active) {
@@ -2276,7 +2279,6 @@
     }
 
     const storageCleared = removeState();
-    showPreview([]);
     syncUiFromState();
 
     if (storageCleared) {

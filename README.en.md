@@ -8,6 +8,12 @@ If you find this script useful, please give it a star on [GitHub](https://github
 
 [繁體中文](README.md)
 
+## 1.3.5 changes
+
+The scan now keeps track of the followers or following list it opened. If Threads replaces that window, the script discards the preview and asks you to scan again. Accounts that load as you scroll in the original window can still be added to the preview.
+
+When you click Start and again after the final confirmation, the script checks the signed-in account, profile, list window, and selected tab before creating a batch from your selection.
+
 ## 1.3.4 changes
 
 - Check stop and pause requests, account and target-page changes, and Threads restrictions while a profile loads. The script can wait for the navigation identity to load, but cannot change relationships before verifying that identity.
@@ -97,6 +103,8 @@ node --test tests/*.test.js
 The tests are offline. They do not sign in to Threads or modify account relationships. After changing the script, update the version notes and `SHA256SUMS` before running the complete suite.
 
 For the post-copy and panel-layout browser suite, provide Playwright and its Chromium browser, then run `node tests/post-tools.browser.js`. Alternatively, set `PLAYWRIGHT_MODULE` to an existing Playwright package and `PLAYWRIGHT_CHROMIUM_EXECUTABLE` to a local Chromium-based browser. The suite uses a separate temporary browser and intercepts website requests with local fixtures; it does not connect to Threads.
+
+Run `node tests/scan-dialog.browser.js` in the same environment to check scanning, list replacement, account selection, and confirmation through the panel.
 
 On 2026-08-24, the current Traditional Chinese Threads DOM and selectors were checked read-only in Edge. A complete live batch was not run against a user account. Other browser, userscript-manager, and interface-language combinations remain unverified.
 

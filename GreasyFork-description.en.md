@@ -4,6 +4,12 @@ Useful tools for Threads: preview and select accounts to remove followers or unf
 
 If you find this script useful, please give it a star on [GitHub](https://github.com/finallyface-dev/threads-safe-batch-manager).
 
+## 1.3.5 changes
+
+The scan now keeps track of the followers or following list it opened. If Threads replaces that window, the script discards the preview and asks you to scan again. Accounts that load as you scroll in the original window can still be added to the preview.
+
+When you click Start and again after the final confirmation, the script checks the signed-in account, profile, list window, and selected tab before creating a batch from your selection.
+
 ## 1.3.4 changes
 
 Profile loading now checks stop and pause requests, account and target-page changes, and platform restrictions. It can wait for the navigation identity to load, but cannot change relationships before verifying that identity.

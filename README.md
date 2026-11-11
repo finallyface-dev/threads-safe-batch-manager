@@ -8,6 +8,12 @@
 
 [Greasy Fork 中文介紹](https://greasyfork.org/zh-TW/scripts/592713?locale_override=1) · [中文版發布說明](GreasyFork-發布說明.md)
 
+## 1.3.5 更新
+
+掃描時，腳本會記住這次開啟的粉絲或追蹤中名單。如果 Threads 將名單換成另一個視窗，腳本會清除本次預覽並提示重新掃描。原視窗捲動載入的新帳號可以繼續加入預覽。
+
+按下「確認並開始」以及完成最後確認時，腳本都會核對登入帳號、個人檔案、名單視窗和所選分頁。核對通過後，腳本才會建立勾選帳號的批次。
+
 ## 1.3.4 更新
 
 - 個人檔案載入期間也會檢查停止、暫停、帳號與目標頁面變動，以及 Threads 的限制提示。導覽列尚未載入時可以等待，但身分未確認前不會執行關係變更。
@@ -132,6 +138,7 @@ node --test tests/*.test.js
 - `tests/batch-waits.test.js`：批次等待、帳號變動與停止訊號回歸測試。
 - `tests/release.test.js`：userscript 標頭、發布版本與檢查值測試。
 - `tests/post-tools.browser.js`：貼文工具及小視窗面板的瀏覽器測試。
+- `tests/scan-dialog.browser.js` 使用相同的瀏覽器測試環境。執行 `node tests/scan-dialog.browser.js` 可測試從掃描、換窗、勾選到確認開始的流程。
 - `SECURITY.md`：安全問題回報方式。
 - `CONTRIBUTING.md`：貢獻與安全邊界。
 - `SHA256SUMS`：正式 userscript 檔案的 SHA-256 檢查值。
