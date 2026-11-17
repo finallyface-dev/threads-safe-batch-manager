@@ -27,7 +27,7 @@ function createFixture() {
         href: 'https://www.threads.com/@alice',
         assign: (url) => fixture.navigation.push(url)
       },
-      addEventListener() {}, setTimeout() {},
+      addEventListener() {}, setTimeout() {}, confirm: () => true,
       getComputedStyle: () => ({ display: 'block', visibility: 'visible', opacity: '1' }),
       sessionStorage: {
         getItem: (key) => storage.get(key) || null,
@@ -61,7 +61,7 @@ function createFixture() {
     globalThis.api = {
       runtime, waitFor, waitForRun, waitForProfileRegion, saveState, readState, unfollowCurrentProfile, openProfileMenu,
       removeFollowerOnCurrentProfile,
-      resumeHandoff, StopRequestedError, PauseRequestedError, SafetyPauseError,
+      resumeHandoff, requestPause, stopAndClear, StopRequestedError, PauseRequestedError, SafetyPauseError,
       replaceProcessor(processor) { processCurrentTarget = processor; }
     };
   })();`);
@@ -460,3 +460,89 @@ test('an obsolete runner cannot overwrite another run after an awaited result', 
   assert.equal(result.index, 0);
   assert.equal(result.completedCount, 0);
 });
+
+for (const stage of ['beforeAction', 'betweenActions']) {
+  for (const interruption of ['pause', 'restriction', 'replacement', 'stop']) {
+    test(`${stage} honors ${interruption} on the final countdown tick`, async () => {
+      const { api, fixture, state } = createFixture();
+      let deadline = stage === 'beforeAction' ? 1500 : null;
+      api.saveState({
+        ...state, status: 'handoff',
+        nextActionNotBefore: stage === 'beforeAction' ? deadline : 0
+      });
+      fixture.getRelation = () => ({
+        element: {}, state: fixture.clicks.length ? 'notFollowing' : 'following'
+      });
+      let elapsed = 1000;
+      let replacement;
+      fixture.onSleep = milliseconds => {
+        elapsed += milliseconds;
+        if (stage === 'betweenActions' && api.readState()?.phase === 'afterAction') {
+          deadline = api.readState().nextActionNotBefore;
+        }
+        if (elapsed !== deadline) return;
+        if (interruption === 'pause') api.requestPause();
+        if (interruption === 'restriction') fixture.safetyMessage = 'Threads restriction';
+        if (interruption === 'stop') api.stopAndClear();
+        if (interruption === 'replacement') {
+          api.stopAndClear();
+          api.runtime.stopped = false;
+          replacement = api.saveState({
+            ...state, token: 'newbatch-5678', status: 'handoff',
+            lastMessage: 'New batch'
+          });
+        }
+      };
+      await api.resumeHandoff();
+      assert.equal(elapsed, deadline, 'interruption occurred exactly at the wait deadline');
+      assert.equal(fixture.navigation.length, 0, 'the old countdown must not navigate');
+      assert.equal(fixture.clicks.length, stage === 'beforeAction' ? 0 : 1);
+      if (interruption === 'stop') assert.equal(api.readState(), null);
+      else if (interruption === 'replacement') assert.equal(JSON.stringify(api.readState()), JSON.stringify(replacement));
+      else {
+        assert.equal(api.readState().status, 'paused');
+        assert.equal(api.readState().completedCount, stage === 'beforeAction' ? 0 : 1);
+      }
+    });
+  }
+}
+
+test('a normal batch advances once after the full action interval', async () => {
+  const { api, fixture, state } = createFixture();
+  api.saveState({ ...state, status: 'handoff' });
+  fixture.getRelation = () => ({
+    element: {}, state: fixture.clicks.length ? 'notFollowing' : 'following'
+  });
+  let waited = 0;
+  fixture.onSleep = milliseconds => {
+    if (api.readState()?.phase === 'afterAction') waited += milliseconds;
+  };
+  await api.resumeHandoff();
+  assert.equal(waited, state.delayMs);
+  assert.equal(fixture.clicks.length, 1);
+  assert.deepEqual(fixture.navigation, ['https://www.threads.com/@carol']);
+  assert.equal(api.readState().index, 1);
+  assert.equal(api.readState().completedCount, 1);
+  assert.equal(api.readState().status, 'handoff');
+});
+
+for (const errorName of ['Error', 'PauseRequestedError', 'SafetyPauseError']) {
+  test(`a delayed ${errorName} cannot modify a replacement batch`, async () => {
+    const { api, fixture, state } = createFixture();
+    api.saveState({ ...state, status: 'handoff' });
+    let rejectOld;
+    api.replaceProcessor(() => new Promise((_resolve, reject) => { rejectOld = reject; }));
+    const oldRun = api.resumeHandoff();
+    api.stopAndClear();
+    api.runtime.stopped = false;
+    const replacement = api.saveState({
+      ...state, token: 'newbatch-5678', status: 'handoff',
+      lastMessage: 'New batch', pauseRequested: true
+    });
+    rejectOld(errorName === 'Error' ? new Error('Old failure') : new api[errorName]('Old failure'));
+    await oldRun;
+    assert.equal(JSON.stringify(api.readState()), JSON.stringify(replacement));
+    assert.equal(fixture.navigation.length, 0);
+    assert.equal(api.runtime.processing, false);
+  });
+}

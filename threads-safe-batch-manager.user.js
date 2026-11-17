@@ -3,7 +3,7 @@
 // @name:zh-TW   Threads 工具箱｜粉絲管理・文字複製・乾淨連結
 // @name:en      Threads Toolkit — Follower Manager, Copy Text & Clean Links
 // @namespace    urn:userscript:threads-safe-batch-manager
-// @version      1.3.5
+// @version      1.3.6
 // @description  在 Threads 加入實用工具：預覽並勾選帳號後批次移除粉絲或取消追蹤，也能複製貼文文字與乾淨連結。提供操作確認、暫停、停止及等待時間估算。
 // @description:zh-TW 在 Threads 加入實用工具：預覽並勾選帳號後批次移除粉絲或取消追蹤，也能複製貼文文字與乾淨連結。提供操作確認、暫停、停止及等待時間估算。
 // @description:en Useful tools for Threads: preview and select accounts to remove followers or unfollow in batches, copy post text, and copy clean links. Includes confirmation, pause, stop, and waiting-time estimates.
@@ -1866,7 +1866,7 @@
   async function waitBetweenActions(notBefore, token) {
     const deadline = Math.max(Date.now(), Number(notBefore) || 0);
 
-    while (Date.now() < deadline) {
+    while (true) {
       if (runtime.stopped) {
         throw new StopRequestedError();
       }
@@ -1886,18 +1886,20 @@
         throw new SafetyPauseError(safetyMessage);
       }
 
+      // Check interruption signals before accepting the final countdown tick.
+      if (Date.now() >= deadline) {
+        return true;
+      }
       const remainingSeconds = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
       updateStatus(`目前項目完成。${remainingSeconds} 秒後處理下一筆。`);
       await sleep(Math.min(500, Math.max(1, deadline - Date.now())));
     }
-
-    return true;
   }
 
   async function waitBeforeResumedAction(notBefore, token) {
     const deadline = Math.max(Date.now(), Number(notBefore) || 0);
 
-    while (Date.now() < deadline) {
+    while (true) {
       if (runtime.stopped) {
         throw new StopRequestedError();
       }
@@ -1915,12 +1917,13 @@
       // The destination can still be loading its signed-in account link.
       // The profile wait verifies identity before any control can be clicked.
       assertRunContext(token, true, true);
+      if (Date.now() >= deadline) {
+        return true;
+      }
       const remainingSeconds = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
       updateStatus(`仍需等待 ${remainingSeconds} 秒，才會開始下一筆。`);
       await sleep(Math.min(500, Math.max(1, deadline - Date.now())));
     }
-
-    return true;
   }
 
   function pauseRun(message) {
@@ -1996,6 +1999,7 @@
       return;
     }
 
+    const runToken = state.token;
     runtime.processing = true;
 
     try {
@@ -2021,13 +2025,13 @@
       if (state.nextActionNotBefore > Date.now()) {
         const mayStart = await waitBeforeResumedAction(
           state.nextActionNotBefore,
-          state.token
+          runToken
         );
         if (!mayStart) {
           return;
         }
         state = readState();
-        if (!state || state.status !== 'handoff') {
+        if (runtime.stopped || !state || state.token !== runToken || state.status !== 'handoff') {
           return;
         }
       }
@@ -2041,7 +2045,7 @@
       syncUiFromState();
 
       const result = await processCurrentTarget(state);
-      state = assertRunMayContinue(state.token, true);
+      state = assertRunMayContinue(runToken, true);
 
       state = saveState({
         ...state,
@@ -2064,13 +2068,13 @@
         return;
       }
 
-      const shouldContinue = await waitBetweenActions(state.nextActionNotBefore, state.token);
+      const shouldContinue = await waitBetweenActions(state.nextActionNotBefore, runToken);
       if (!shouldContinue) {
         return;
       }
 
       state = readState();
-      if (!state) {
+      if (runtime.stopped || !state || state.token !== runToken || state.status !== 'running') {
         return;
       }
       navigateToCurrentTarget(state);
@@ -2079,13 +2083,17 @@
         return;
       }
 
+      // A rejected wait belongs only to the batch that started this runner.
+      const currentState = readState();
+      if (currentState && currentState.token !== runToken) {
+        return;
+      }
       if (error instanceof PauseRequestedError) {
         pauseRun(error.message);
         return;
       }
 
       let finalErrorMessage = error.message || '批次已因錯誤暫停。';
-      const currentState = readState();
       if (currentState) {
         const resultIsUnknown = ['actionClicked', 'verificationUnknown'].includes(currentState.phase);
         try {

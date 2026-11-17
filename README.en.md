@@ -8,6 +8,12 @@ If you find this script useful, please give it a star on [GitHub](https://github
 
 [繁體中文](README.md)
 
+## 1.3.6 changes
+
+Batch countdowns now check pause and stop requests and Threads restrictions at the end of the final wait. A pause request arriving on that final tick pauses the batch before it continues.
+
+When a wait finishes or an error arrives, the script checks which batch it belongs to. After you start a new batch, delayed errors from the previous batch are ignored so the new queue, progress, and status are preserved.
+
 ## 1.3.5 changes
 
 The scan now keeps track of the followers or following list it opened. If Threads replaces that window, the script discards the preview and asks you to scan again. Accounts that load as you scroll in the original window can still be added to the preview.
