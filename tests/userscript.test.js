@@ -71,6 +71,15 @@ assert.equal(api.cleanPostUrl('/@alice/post/ABC_123?utm_source=test#reply'), 'ht
 assert.equal(api.cleanPostUrl('https://example.com/@alice/post/ABC'), null);
 assert.equal(api.cleanPostUrl('/@alice'), null);
 assert.equal(api.cleanPostUrl('javascript:alert(1)'), null);
+const profileBase = 'https://www.threads.com/@alice/';
+const postBase = profileBase + 'post/Mixed_Case';
+assert.equal(api.cleanPostUrl('./post/Mixed_Case/?from=feed#reply', profileBase), postBase);
+assert.equal(api.cleanPostUrl('post/Mixed_Case', 'https://example.com/@alice/'), null);
+assert.equal(api.cleanPostUrl('https://user@example.com/@alice/post/ABC'), null);
+assert.equal(api.cleanPostUrl('https://user@www.threads.com/@alice/post/ABC'), null);
+for (const pageLink of ['', '#reply', '?next=/post/ABC', 'Other', './']) {
+  assert.equal(api.cleanPostUrl(pageLink, postBase), null);
+}
 
 const validState = {
   version: 1,

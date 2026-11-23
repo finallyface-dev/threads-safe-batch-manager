@@ -244,6 +244,40 @@ const fixtureSource = source.slice(0, initOffset) +
     }
     await page.uncheck('#toggle');
 
+    await page.setContent(`
+      <input id="toggle" type="checkbox">
+      <article id="variants"><a href="/@alice/post/AbC_1/?utm_source=feed#reply">Time</a>
+        <a href="/@alice/post/AbC_1">Open post</a><div dir="auto">Same post</div></article>
+      <article id="relative"><a href="post/Relative-2?from=feed">Time</a><div dir="auto">Relative post</div></article>
+      <article id="misleading"><a href="@alice/post/WRONG">Open</a></article>`);
+    await page.evaluate(() => {
+      history.replaceState({}, '', '/@owner/');
+      __postToolsTest.setupPostTools(document.querySelector('#toggle'));
+    });
+    await page.check('#toggle');
+    assert.equal(await page.locator('#variants > [data-tsbm-post-tools]').count(), 1,
+      'two links to one post still allow copying when only one ends in a slash');
+    assert.equal(await page.locator('#relative > [data-tsbm-post-tools]').count(), 1,
+      'an explicit relative post link resolves from the current profile');
+    assert.equal(await page.locator('#misleading > [data-tsbm-post-tools]').count(), 0,
+      'a relative path that resolves outside the post URL format cannot identify a post');
+    for (const [id, expected] of [
+      ['variants', 'https://www.threads.com/@alice/post/AbC_1'],
+      ['relative', 'https://www.threads.com/@owner/post/Relative-2']
+    ]) {
+      await page.locator('#' + id).getByRole('button', { name: '複製乾淨連結' }).click();
+      assert.equal(await page.evaluate(() => window.copiedPostValues.at(-1)), expected);
+    }
+    // A page anchor or a query-only link on a post page is not a post permalink.
+    await page.evaluate(() => {
+      history.replaceState({}, '', '/@owner/post/Current');
+      document.querySelector('#relative a').setAttribute('href', '#reply');
+      document.querySelector('#misleading a').setAttribute('href', '?view=all');
+    });
+    await page.waitForFunction(() => !document.querySelector('#relative > [data-tsbm-post-tools]'));
+    assert.equal(await page.locator('#misleading > [data-tsbm-post-tools]').count(), 0);
+    await page.uncheck('#toggle');
+
     await page.setContent('<main></main>');
     await page.setViewportSize({ width: 390, height: 480 });
     const panelLayout = await page.evaluate(() => {

@@ -3,7 +3,7 @@
 // @name:zh-TW   Threads 工具箱｜粉絲管理・文字複製・乾淨連結
 // @name:en      Threads Toolkit — Follower Manager, Copy Text & Clean Links
 // @namespace    urn:userscript:threads-safe-batch-manager
-// @version      1.3.6
+// @version      1.3.7
 // @description  在 Threads 加入實用工具：預覽並勾選帳號後批次移除粉絲或取消追蹤，也能複製貼文文字與乾淨連結。提供操作確認、暫停、停止及等待時間估算。
 // @description:zh-TW 在 Threads 加入實用工具：預覽並勾選帳號後批次移除粉絲或取消追蹤，也能複製貼文文字與乾淨連結。提供操作確認、暫停、停止及等待時間估算。
 // @description:en Useful tools for Threads: preview and select accounts to remove followers or unfollow in batches, copy post text, and copy clean links. Includes confirmation, pause, stop, and waiting-time estimates.
@@ -2381,16 +2381,20 @@
     updateStatus(message, tone);
   }
 
-  function cleanPostUrl(href) {
+  function cleanPostUrl(href, baseUrl = window.location.href) {
     try {
-      const url = new URL(href, window.location.origin);
-      if (url.origin !== window.location.origin ||
+      // A fragment or query on a post page also resolves to that page. Only
+      // use links that explicitly name a post in their own path.
+      const path = href.trim().split(/[?#]/, 1)[0];
+      if (!/(?:^|\/)post\/[a-z0-9_-]+\/?$/i.test(path)) {
+        return null;
+      }
+      const url = new URL(href, baseUrl);
+      if (url.origin !== window.location.origin || url.username || url.password ||
         !/^\/@[a-z0-9._]+\/post\/[a-z0-9_-]+\/?$/i.test(url.pathname)) {
         return null;
       }
-      url.search = '';
-      url.hash = '';
-      return url.href;
+      return url.origin + url.pathname.replace(/\/$/, '');
     } catch (_error) {
       return null;
     }
@@ -2417,7 +2421,7 @@
   function currentPostUrl(article) {
     const urls = new Set([...article.querySelectorAll('a[href]')]
       .filter((link) => link.closest(POST_CONTAINER_SELECTOR) === article && isPostElementVisible(link))
-      .map((link) => cleanPostUrl(link.getAttribute('href'))).filter(Boolean));
+      .map((link) => cleanPostUrl(link.getAttribute('href'), link.baseURI)).filter(Boolean));
     return urls.size === 1 ? [...urls][0] : null;
   }
 

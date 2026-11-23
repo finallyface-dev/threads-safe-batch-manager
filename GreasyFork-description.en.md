@@ -4,6 +4,12 @@ Useful tools for Threads: preview and select accounts to remove followers or unf
 
 If you find this script useful, please give it a star on [GitHub](https://github.com/finallyface-dev/threads-safe-batch-manager).
 
+## 1.3.7 changes
+
+Some links to the same post differ only by a trailing slash. The toolkit now recognizes them as one post and shows both copy buttons. The copied link preserves the case of the post ID and removes the trailing slash, query parameters, and fragment.
+
+Relative links on profile pages, such as `post/ABC`, are checked against their actual destination. The copy tools appear only when the links identify a single Threads post.
+
 ## 1.3.6 changes
 
 Batch countdowns now check pause and stop requests and Threads restrictions at the end of the final wait. A pause request arriving on that final tick pauses the batch before it continues.
