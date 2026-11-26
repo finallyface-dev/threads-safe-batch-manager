@@ -4,6 +4,12 @@ Useful tools for Threads: preview and select accounts to remove followers or unf
 
 If you find this script useful, please give it a star on [GitHub](https://github.com/finallyface-dev/threads-safe-batch-manager).
 
+## 1.3.8 changes
+
+After an account is processed, the batch pauses if you switch accounts, the toolkit can no longer identify the signed-in account, or you leave the profile during the countdown. You stay on the page you chose, even if the change happens just as the countdown ends.
+
+The toolkit keeps the completed count and the original waiting period. Once the original account is active and you confirm you want to continue, the batch resumes with the next item.
+
 ## 1.3.7 changes
 
 Some links to the same post differ only by a trailing slash. The toolkit now recognizes them as one post and shows both copy buttons. The copied link preserves the case of the post ID and removes the trailing slash, query parameters, and fragment.

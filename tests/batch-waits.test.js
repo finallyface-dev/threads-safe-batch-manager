@@ -61,7 +61,7 @@ function createFixture() {
     globalThis.api = {
       runtime, waitFor, waitForRun, waitForProfileRegion, saveState, readState, unfollowCurrentProfile, openProfileMenu,
       removeFollowerOnCurrentProfile,
-      resumeHandoff, requestPause, stopAndClear, StopRequestedError, PauseRequestedError, SafetyPauseError,
+      resumeHandoff, resumePausedRun, requestPause, stopAndClear, StopRequestedError, PauseRequestedError, SafetyPauseError,
       replaceProcessor(processor) { processCurrentTarget = processor; }
     };
   })();`);
@@ -507,15 +507,69 @@ for (const stage of ['beforeAction', 'betweenActions']) {
   }
 }
 
+for (const timing of ['during the wait', 'at the deadline']) {
+  for (const change of ['switched owner', 'missing owner', 'another profile', 'home', 'same-author post']) {
+    test(`after-action countdown pauses for ${change} ${timing}`, async () => {
+      const { api, fixture, state, location } = createFixture();
+      api.saveState({ ...state, status: 'handoff' });
+      fixture.getRelation = () => ({
+        element: {}, state: fixture.clicks.length ? 'notFollowing' : 'following'
+      });
+      let elapsed = 1000;
+      let deadline;
+      let interruptedAt;
+      fixture.onSleep = milliseconds => {
+        elapsed += milliseconds;
+        const current = api.readState();
+        if (current.phase !== 'afterAction' || interruptedAt !== undefined) return;
+        deadline = current.nextActionNotBefore;
+        if (timing === 'at the deadline' && elapsed < deadline) return;
+        interruptedAt = elapsed;
+        if (change === 'switched owner') fixture.owner = 'other';
+        if (change === 'missing owner') fixture.owner = null;
+        if (change === 'another profile') location.pathname = '/@another.profile';
+        if (change === 'home') location.pathname = '/';
+        if (change === 'same-author post') location.pathname = '/@alice/post/Example';
+      };
+      await api.resumeHandoff();
+      const paused = api.readState();
+      assert.equal(paused.status, 'paused');
+      assert.equal(elapsed, interruptedAt, 'the next countdown check must pause immediately');
+      if (timing === 'at the deadline') assert.equal(interruptedAt, deadline);
+      else assert.ok(interruptedAt < deadline);
+      assert.equal(paused.index, 1);
+      assert.equal(paused.completedCount, 1);
+      assert.equal(paused.skippedCount, 0);
+      assert.equal(paused.nextActionNotBefore, deadline);
+      assert.equal(fixture.clicks.length, 1);
+      assert.deepEqual(fixture.navigation, []);
+
+      if (fixture.owner !== state.originHandle) {
+        api.resumePausedRun();
+        assert.equal(api.readState().status, 'paused', 'the original owner is required to continue');
+        assert.deepEqual(fixture.navigation, []);
+      }
+      fixture.owner = state.originHandle;
+      api.resumePausedRun();
+      assert.deepEqual(fixture.navigation, ['https://www.threads.com/@carol']);
+      assert.equal(api.readState().nextActionNotBefore, deadline);
+      assert.equal(fixture.clicks.length, 1);
+    });
+  }
+}
+
 test('a normal batch advances once after the full action interval', async () => {
-  const { api, fixture, state } = createFixture();
+  const { api, fixture, state, location } = createFixture();
   api.saveState({ ...state, status: 'handoff' });
   fixture.getRelation = () => ({
     element: {}, state: fixture.clicks.length ? 'notFollowing' : 'following'
   });
   let waited = 0;
   fixture.onSleep = milliseconds => {
-    if (api.readState()?.phase === 'afterAction') waited += milliseconds;
+    if (api.readState()?.phase === 'afterAction') {
+      waited += milliseconds;
+      location.pathname = '/@ALICE/';
+    }
   };
   await api.resumeHandoff();
   assert.equal(waited, state.delayMs);

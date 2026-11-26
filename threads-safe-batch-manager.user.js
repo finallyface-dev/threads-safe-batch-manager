@@ -3,7 +3,7 @@
 // @name:zh-TW   Threads 工具箱｜粉絲管理・文字複製・乾淨連結
 // @name:en      Threads Toolkit — Follower Manager, Copy Text & Clean Links
 // @namespace    urn:userscript:threads-safe-batch-manager
-// @version      1.3.7
+// @version      1.3.8
 // @description  在 Threads 加入實用工具：預覽並勾選帳號後批次移除粉絲或取消追蹤，也能複製貼文文字與乾淨連結。提供操作確認、暫停、停止及等待時間估算。
 // @description:zh-TW 在 Threads 加入實用工具：預覽並勾選帳號後批次移除粉絲或取消追蹤，也能複製貼文文字與乾淨連結。提供操作確認、暫停、停止及等待時間估算。
 // @description:en Useful tools for Threads: preview and select accounts to remove followers or unfollow in batches, copy post text, and copy clean links. Includes confirmation, pause, stop, and waiting-time estimates.
@@ -1538,6 +1538,17 @@
     return matched ? 'Threads 顯示錯誤、驗證或操作限制。腳本已暫停，不會嘗試繞過。' : null;
   }
 
+  function assertRunOwner(state, allowPendingOwner = false) {
+    const ownHandle = getOwnHandle();
+    if (!ownHandle && !allowPendingOwner) {
+      throw new SafetyPauseError('無法確認登入狀態，已暫停。');
+    }
+
+    if (ownHandle && ownHandle.toLowerCase() !== state.originHandle.toLowerCase()) {
+      throw new SafetyPauseError('目前登入帳號已與本批預覽帳號不同，腳本已暫停。');
+    }
+  }
+
   function assertRunContext(token, allowPause = false, allowPendingOwner = false) {
     if (runtime.stopped) {
       throw new StopRequestedError();
@@ -1548,15 +1559,7 @@
       throw new StopRequestedError();
     }
 
-    const ownHandle = getOwnHandle();
-    if (!ownHandle && !allowPendingOwner) {
-      throw new SafetyPauseError('無法確認登入狀態，已暫停。');
-    }
-
-    if (ownHandle && ownHandle.toLowerCase() !== state.originHandle.toLowerCase()) {
-      throw new SafetyPauseError('目前登入帳號已與本批預覽帳號不同，腳本已暫停。');
-    }
-
+    assertRunOwner(state, allowPendingOwner);
     const expectedHandle = state.queue[state.index] || state.expectedHandle;
     const currentHandle = handleFromPath();
     if (!expectedHandle || !currentHandle || expectedHandle.toLowerCase() !== currentHandle.toLowerCase()) {
@@ -1863,7 +1866,7 @@
     return { status: 'completed', message: '已取消追蹤一個帳號。' };
   }
 
-  async function waitBetweenActions(notBefore, token) {
+  async function waitAndNavigateToNextTarget(notBefore, token) {
     const deadline = Math.max(Date.now(), Number(notBefore) || 0);
 
     while (true) {
@@ -1872,23 +1875,29 @@
       }
 
       const state = readState();
-      if (!state || state.token !== token) {
+      if (!state || state.token !== token || state.status !== 'running' || state.phase !== 'afterAction') {
         throw new StopRequestedError();
       }
 
       if (state.pauseRequested) {
         pauseRun('已依要求在完成目前項目後暫停。');
-        return false;
+        return;
       }
 
+      // The queue index already points to the next account. The page
+      // must still show the account that just finished until we navigate.
+      assertRunOwner(state);
+      const path = window.location.pathname.replace(/\/$/, '').toLowerCase();
+      if (!state.expectedHandle || path !== `/@${state.expectedHandle}`) {
+        throw new SafetyPauseError('目前頁面已離開剛處理的個人檔案，批次已暫停。');
+      }
       const safetyMessage = detectedSafetyStopMessage();
       if (safetyMessage) {
         throw new SafetyPauseError(safetyMessage);
       }
-
-      // Check interruption signals before accepting the final countdown tick.
       if (Date.now() >= deadline) {
-        return true;
+        navigateToCurrentTarget(state);
+        return;
       }
       const remainingSeconds = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
       updateStatus(`目前項目完成。${remainingSeconds} 秒後處理下一筆。`);
@@ -2068,16 +2077,7 @@
         return;
       }
 
-      const shouldContinue = await waitBetweenActions(state.nextActionNotBefore, runToken);
-      if (!shouldContinue) {
-        return;
-      }
-
-      state = readState();
-      if (runtime.stopped || !state || state.token !== runToken || state.status !== 'running') {
-        return;
-      }
-      navigateToCurrentTarget(state);
+      await waitAndNavigateToNextTarget(state.nextActionNotBefore, runToken);
     } catch (error) {
       if (error instanceof StopRequestedError) {
         return;
